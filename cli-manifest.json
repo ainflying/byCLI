@@ -34390,6 +34390,130 @@
   },
   {
     "site": "zhihu",
+    "name": "answer-waiting-draft",
+    "description": "保存知乎回答草稿（新回答或已有回答的编辑草稿，不发布）",
+    "access": "write",
+    "domain": "www.zhihu.com",
+    "strategy": "cookie",
+    "browser": "conditional",
+    "args": [
+      {
+        "name": "target",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "Question ID, question/own-answer URL, question:<id>, or answer:<questionId>:<answerId>"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "positional": true,
+        "help": "Plain-text answer body; use either text or --file"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "UTF-8 text file containing the answer body"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "auto",
+        "required": false,
+        "help": "auto detects new/edit; new refuses an existing answer; edit requires your existing answer",
+        "choices": [
+          "auto",
+          "new",
+          "edit"
+        ]
+      },
+      {
+        "name": "existing",
+        "type": "str",
+        "default": "error",
+        "required": false,
+        "help": "Policy when the editor already has content; identical text is left unchanged",
+        "choices": [
+          "error",
+          "replace",
+          "append",
+          "prepend"
+        ]
+      },
+      {
+        "name": "separator",
+        "type": "str",
+        "default": "\n\n",
+        "required": false,
+        "help": "Literal separator for append/prepend (default: a blank line)"
+      },
+      {
+        "name": "prefix",
+        "type": "str",
+        "required": false,
+        "help": "Literal text before the supplied body (include any desired newline)"
+      },
+      {
+        "name": "suffix",
+        "type": "str",
+        "required": false,
+        "help": "Literal text after the supplied body (include any desired newline)"
+      },
+      {
+        "name": "expected-title",
+        "type": "str",
+        "required": false,
+        "help": "Require an exact question title before editing"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 30,
+        "required": false,
+        "help": "Total editor/save verification wait budget in seconds (1–120)"
+      },
+      {
+        "name": "close-editor",
+        "type": "boolean",
+        "default": true,
+        "required": false,
+        "help": "Close editor after verified save; false leaves it open (combine with --keep-tab true)"
+      },
+      {
+        "name": "dry-run",
+        "type": "boolean",
+        "required": false,
+        "help": "Preview resolved input locally without opening or modifying the editor"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "Actually save the draft; never publishes an answer"
+      }
+    ],
+    "columns": [
+      "status",
+      "outcome",
+      "question_id",
+      "answer_id",
+      "mode",
+      "url",
+      "characters",
+      "verified",
+      "published",
+      "editor_open",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/answer-waiting-draft.js",
+    "sourceFile": "zhihu/answer-waiting-draft.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "zhihu",
     "name": "collection",
     "description": "知乎收藏夹内容列表（需要登录）",
     "access": "read",
@@ -34827,6 +34951,50 @@
     "type": "js",
     "modulePath": "zhihu/search.js",
     "sourceFile": "zhihu/search.js",
+    "navigateBefore": "https://www.zhihu.com"
+  },
+  {
+    "site": "zhihu",
+    "name": "waiting",
+    "description": "知乎写回答（等你来答）问题列表",
+    "access": "read",
+    "domain": "www.zhihu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "type",
+        "type": "str",
+        "default": "recommend",
+        "required": false,
+        "help": "Question category: recommend 为你推荐, invited 邀请回答, latest 最新问题, hot 人气问题",
+        "choices": [
+          "recommend",
+          "invited",
+          "latest",
+          "hot"
+        ]
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "Maximum questions to return (1–1000; stops when the page stops loading)"
+      }
+    ],
+    "columns": [
+      "rank",
+      "id",
+      "title",
+      "views",
+      "answers",
+      "followers",
+      "url"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/waiting.js",
+    "sourceFile": "zhihu/waiting.js",
     "navigateBefore": "https://www.zhihu.com"
   },
   {
