@@ -14,6 +14,7 @@ import { DAEMON_HOST, DAEMON_PORT, DAEMON_WS_URL, DAEMON_PING_URL, WS_RECONNECT_
 import * as executor from './cdp';
 import * as identity from './identity';
 import { checkUrlSyntax } from './url-policy';
+import { constrainOwnedWindowBounds, createOwnedWindowBounds, selectWindowWorkArea } from './window-geometry';
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -638,7 +639,105 @@ async function focusOwnedWindowIfRequested(windowId: number, mode: WindowMode): 
   if (typeof updateWindow === 'function') await updateWindow(windowId, { focused: true }).catch(() => {});
 }
 
+async function getOwnedWindowWorkArea(reference?: chrome.windows.Window): Promise<chrome.system.display.Bounds | null> {
+  try {
+    if (typeof chrome.system?.display?.getInfo !== 'function') throw new Error('system.display API unavailable');
+    const displays = await chrome.system.display.getInfo();
+    const area = selectWindowWorkArea(displays, reference);
+    if (!area) throw new Error('no enabled displays with a valid work area');
+    return area;
+  } catch (err) {
+    console.warn(`[bycli] Unable to query display work area: ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+}
+
+async function getNewOwnedWindowBounds(): Promise<chrome.system.display.Bounds | undefined> {
+  let reference: chrome.windows.Window | undefined;
+  try {
+    if (typeof chrome.windows.getLastFocused === 'function') {
+      const lastFocused = await chrome.windows.getLastFocused({ windowTypes: ['normal'] });
+      if (lastFocused.type === 'normal') reference = lastFocused;
+    }
+  } catch {
+    // With no normal anchor window, display selection falls back to the primary.
+  }
+  const area = await getOwnedWindowWorkArea(reference);
+  // Missing display metadata must not bring back the oversized 1280x900 default.
+  // Omit all geometry and let Chrome choose a natural size and position instead.
+  return area ? createOwnedWindowBounds(area) : undefined;
+}
+
+const ownedWindowGeometryUpdates = new Map<number, Promise<void>>();
+// A known dragged tab/group is insufficient evidence of destination-window
+// ownership. Keep that destination out of group discovery until it closes.
+const excludedOwnedWindowIds = new Set<number>();
+
+function isKnownOwnedWindow(windowId: number): boolean {
+  return Object.values(ownedContainers).some(container => container.windowId === windowId)
+    || [...automationSessions.values()].some(session => session.owned && session.windowId === windowId);
+}
+
+function rememberOwnedTabDrift(tab: chrome.tabs.Tab, ownedWindowId: number): void {
+  if (tab.windowId !== ownedWindowId && !isKnownOwnedWindow(tab.windowId)) {
+    excludedOwnedWindowIds.add(tab.windowId);
+  }
+}
+
+async function rememberOwnedGroupDrift(groupId: number | null, ownedWindowId: number): Promise<void> {
+  if (groupId === null) return;
+  try {
+    const group = await chrome.tabGroups.get(groupId);
+    if (group.windowId !== ownedWindowId && !isKnownOwnedWindow(group.windowId)) {
+      excludedOwnedWindowIds.add(group.windowId);
+    }
+  } catch {
+    // A deleted group provides no surviving destination to exclude.
+  }
+}
+
+async function constrainOwnedWindowGeometry(windowId: number): Promise<void> {
+  const previous = ownedWindowGeometryUpdates.get(windowId) ?? Promise.resolve();
+  const next = previous.catch(() => undefined).then(async () => {
+    if (!isKnownOwnedWindow(windowId)) return;
+    try {
+      const window = await chrome.windows.get(windowId);
+      // Updating geometry of these states may unminimize or restore them.
+      if (window.type !== 'normal' || window.state !== 'normal') return;
+      const originalBounds = { left: window.left, top: window.top, width: window.width, height: window.height };
+      const area = await getOwnedWindowWorkArea(window);
+      if (!area || !isKnownOwnedWindow(windowId)) return;
+      const current = await chrome.windows.get(windowId);
+      if (!isKnownOwnedWindow(windowId) || current.type !== 'normal' || current.state !== 'normal'
+        || current.left !== originalBounds.left || current.top !== originalBounds.top
+        || current.width !== originalBounds.width || current.height !== originalBounds.height) return;
+      const bounds = constrainOwnedWindowBounds(current, area);
+      if (bounds) await chrome.windows.update(windowId, bounds);
+    } catch (err) {
+      // Geometry failures are not evidence that a valid lease/window is closed.
+      console.warn(`[bycli] Failed to constrain owned window ${windowId} geometry: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  });
+  const tracked = next.finally(() => {
+    if (ownedWindowGeometryUpdates.get(windowId) === tracked) ownedWindowGeometryUpdates.delete(windowId);
+  });
+  ownedWindowGeometryUpdates.set(windowId, tracked);
+  await tracked;
+}
+
+chrome.system?.display?.onDisplayChanged?.addListener(async () => {
+  const ids = new Set<number>();
+  for (const container of Object.values(ownedContainers)) {
+    if (container.windowId !== null) ids.add(container.windowId);
+  }
+  for (const session of automationSessions.values()) {
+    if (session.owned) ids.add(session.windowId);
+  }
+  await Promise.all([...ids].map(constrainOwnedWindowGeometry));
+});
+
 async function toOwnedContainerDiscoveryCandidate(group: chrome.tabGroups.TabGroup): Promise<OwnedContainerDiscoveryCandidate | null> {
+  if (excludedOwnedWindowIds.has(group.windowId)) return null;
   try {
     const chromeWindow = await chrome.windows.get(group.windowId);
     const reusableTabId = await findReusableOwnedContainerTab(group.windowId, group.id);
@@ -668,6 +767,7 @@ async function discoverOwnedContainerFromTabGroup(role: OwnedWindowRole): Promis
   if (container.groupId !== null) {
     try {
       const group = await chrome.tabGroups.get(container.groupId);
+      if (excludedOwnedWindowIds.has(group.windowId)) throw new Error('Owned group moved to a user window');
       await chrome.windows.get(group.windowId);
       container.windowId = group.windowId;
       return { windowId: group.windowId, groupId: group.id };
@@ -764,8 +864,11 @@ async function ensureOwnedContainerWindowUnlocked(
 ): Promise<{ windowId: number; initialTabId?: number }> {
   const container = ownedContainers[role];
   if (container.windowId !== null) {
+    const knownWindowId = container.windowId;
+    const knownGroupId = container.groupId;
     try {
       await chrome.windows.get(container.windowId);
+      await constrainOwnedWindowGeometry(container.windowId);
       await focusOwnedWindowIfRequested(container.windowId, mode);
       const initialTabId = await findReusableOwnedContainerTab(container.windowId, await getOwnedContainerGroupId(role, container.windowId));
       await ensureOwnedContainerTabGroup(role, container.windowId, [initialTabId]);
@@ -774,13 +877,17 @@ async function ensureOwnedContainerWindowUnlocked(
         initialTabId,
       };
     } catch {
-      container.windowId = null;
-      container.groupId = null;
+      await rememberOwnedGroupDrift(knownGroupId, knownWindowId);
+      if (container.windowId === knownWindowId && container.groupId === knownGroupId) {
+        container.windowId = null;
+        container.groupId = null;
+      }
     }
   }
 
   const discovered = await discoverOwnedContainerFromTabGroup(role);
   if (discovered) {
+    await constrainOwnedWindowGeometry(discovered.windowId);
     await focusOwnedWindowIfRequested(discovered.windowId, mode);
     const initialTabId = await findReusableOwnedContainerTab(discovered.windowId, discovered.groupId);
     await ensureOwnedContainerTabGroup(role, discovered.windowId, [initialTabId]);
@@ -798,8 +905,7 @@ async function ensureOwnedContainerWindowUnlocked(
   const win = await chrome.windows.create({
     url: startUrl,
     focused: mode === 'foreground',
-    width: 1280,
-    height: 900,
+    ...await getNewOwnedWindowBounds(),
     type: 'normal',
   });
   container.windowId = win.id!;
@@ -924,9 +1030,16 @@ async function getAutomationWindow(leaseKey: string, initialUrl?: string): Promi
       const tabId = existing.preferredTabId;
       if (tabId !== null) {
         const tab = await chrome.tabs.get(tabId);
-        if (isDebuggableUrl(tab.url)) return tab.windowId;
+        rememberOwnedTabDrift(tab, existing.windowId);
+        if (isDebuggableUrl(tab.url) && tab.windowId === existing.windowId) {
+          await constrainOwnedWindowGeometry(existing.windowId);
+          return existing.windowId;
+        }
       }
+      // A dragged leased tab never makes its destination user window an owned
+      // container. New tabs must continue using the recorded owned window.
       await chrome.windows.get(existing.windowId);
+      await constrainOwnedWindowGeometry(existing.windowId);
       return existing.windowId;
     } catch {
       // Tab/window was closed by user
@@ -941,10 +1054,15 @@ async function getAutomationWindow(leaseKey: string, initialUrl?: string): Promi
 
 // Clean up when an owned container window is closed
 chrome.windows.onRemoved.addListener(async (windowId) => {
+  excludedOwnedWindowIds.delete(windowId);
   for (const container of Object.values(ownedContainers)) {
     if (container.windowId === windowId) {
-      container.windowId = null;
-      container.groupId = null;
+      const knownGroupId = container.groupId;
+      await rememberOwnedGroupDrift(knownGroupId, windowId);
+      if (container.windowId === windowId && container.groupId === knownGroupId) {
+        container.windowId = null;
+        container.groupId = null;
+      }
     }
   }
   for (const [leaseKey, expected] of [...automationSessions.entries()]) {
@@ -1267,10 +1385,16 @@ async function resolveTabUnlocked(tabId: number | undefined, leaseKey: string, i
     try {
       const tab = await chrome.tabs.get(tabId);
       const session = existingSession;
+      if (session?.owned && (session.preferredTabId === tabId || session.preferredTabId === null)) {
+        rememberOwnedTabDrift(tab, session.windowId);
+      }
       const matchesSession = session
         ? (session.preferredTabId !== null ? session.preferredTabId === tabId : tab.windowId === session.windowId)
         : false;
-      if (isDebuggableUrl(tab.url) && matchesSession) return { tabId, tab };
+      if (isDebuggableUrl(tab.url) && matchesSession) {
+        if (session?.owned && tab.windowId === session.windowId) await constrainOwnedWindowGeometry(session.windowId);
+        return { tabId, tab };
+      }
       if (session && !session.owned) {
         throw new CommandFailure(
           matchesSession ? 'bound_tab_not_debuggable' : 'bound_tab_mismatch',
@@ -1288,6 +1412,7 @@ async function resolveTabUnlocked(tabId: number | undefined, leaseKey: string, i
           await chrome.tabs.move(tabId, { windowId: session.windowId, index: -1 });
           const moved = await chrome.tabs.get(tabId);
           if (moved.windowId === session.windowId && isDebuggableUrl(moved.url)) {
+            if (session.owned) await constrainOwnedWindowGeometry(session.windowId);
             return { tabId, tab: moved };
           }
         } catch (moveErr) {
@@ -1315,7 +1440,11 @@ async function resolveTabUnlocked(tabId: number | undefined, leaseKey: string, i
     const session = existingSession;
     try {
       const preferredTab = await chrome.tabs.get(existingPreferredTabId);
-      if (isDebuggableUrl(preferredTab.url)) return { tabId: preferredTab.id!, tab: preferredTab };
+      if (session.owned) rememberOwnedTabDrift(preferredTab, session.windowId);
+      if (isDebuggableUrl(preferredTab.url)) {
+        if (session.owned && preferredTab.windowId === session.windowId) await constrainOwnedWindowGeometry(session.windowId);
+        return { tabId: preferredTab.id!, tab: preferredTab };
+      }
       if (!session.owned) {
         throw new CommandFailure(
           'bound_tab_not_debuggable',
@@ -1713,6 +1842,8 @@ async function handleFocusUnlocked(cmd: Command, leaseKey: string): Promise<Resu
     return { id: cmd.id, ok: false, error: 'Current automation session tab changed window during focus' };
   }
 
+  await constrainOwnedWindowGeometry(focusLease.windowId);
+  if (!isFocusLeaseCurrent(leaseKey, focusLease)) return focusLeaseChangedResult(cmd.id);
   await updateWindow(focusLease.windowId, { focused: true });
   if (!isFocusLeaseCurrent(leaseKey, focusLease)) return focusLeaseChangedResult(cmd.id);
   return { id: cmd.id, ok: true, data: { focused: true } };
@@ -1810,12 +1941,16 @@ async function handleTabSelectUnlocked(cmd: Command, leaseKey: string): Promise<
     if (!session || tab.windowId !== session.windowId) {
       return { id: cmd.id, ok: false, error: 'Page is not in the automation container' };
     }
+    if (session.owned) await constrainOwnedWindowGeometry(session.windowId);
     await chrome.tabs.update(cmdTabId, { active: true });
     return pageScopedResult(cmd.id, cmdTabId, { selected: true });
   }
   const tabs = await listAutomationWebTabsUnlocked(leaseKey);
   const target = tabs[cmd.index!];
   if (!target?.id) return { id: cmd.id, ok: false, error: `Tab index ${cmd.index} not found` };
+  if (lockedSession?.owned && target.windowId === lockedSession.windowId) {
+    await constrainOwnedWindowGeometry(lockedSession.windowId);
+  }
   await chrome.tabs.update(target.id, { active: true });
   return pageScopedResult(cmd.id, target.id, { selected: true });
 }
@@ -2163,13 +2298,22 @@ async function reconcileTargetLeaseRegistry(): Promise<void> {
   for (const role of Object.keys(ownedContainers) as OwnedWindowRole[]) {
     ownedContainers[role].windowId = registry.ownedContainers[role]?.windowId ?? null;
     ownedContainers[role].groupId = registry.ownedContainers[role]?.groupId ?? null;
+  }
+  // Load both roles before checking drift so another recorded owned window is
+  // not mistaken for a user destination when its sibling container is closed.
+  for (const role of Object.keys(ownedContainers) as OwnedWindowRole[]) {
     const windowId = ownedContainers[role].windowId;
+    const groupId = ownedContainers[role].groupId;
     if (windowId !== null) {
       try {
         await chrome.windows.get(windowId);
+        await constrainOwnedWindowGeometry(windowId);
       } catch {
-        ownedContainers[role].windowId = null;
-        ownedContainers[role].groupId = null;
+        await rememberOwnedGroupDrift(groupId, windowId);
+        if (ownedContainers[role].windowId === windowId && ownedContainers[role].groupId === groupId) {
+          ownedContainers[role].windowId = null;
+          ownedContainers[role].groupId = null;
+        }
       }
     }
   }
@@ -2181,6 +2325,8 @@ async function reconcileTargetLeaseRegistry(): Promise<void> {
     try {
       const tab = await chrome.tabs.get(tabId);
       if (!isDebuggableUrl(tab.url)) continue;
+      if (stored.owned && (!Number.isInteger(stored.windowId) || stored.windowId < 0)) continue;
+      if (stored.owned) rememberOwnedTabDrift(tab, stored.windowId);
       if (stored.lifecycle === 'ephemeral' || stored.lifecycle === 'persistent' || stored.lifecycle === 'pinned') {
         sessionLifecycleOverrides.set(leaseKey, stored.lifecycle);
       }
@@ -2188,7 +2334,9 @@ async function reconcileTargetLeaseRegistry(): Promise<void> {
         session: typeof stored.session === 'string' ? stored.session : getSessionFromKey(leaseKey),
         surface: stored.surface === 'adapter' ? 'adapter' : getSurfaceFromKey(leaseKey),
         kind: stored.kind === 'bound' || stored.owned === false ? 'bound' : 'owned',
-        windowId: tab.windowId,
+        // A leased tab can be dragged into a user window while the worker is
+        // stopped. Its current location does not transfer window ownership.
+        windowId: stored.owned ? stored.windowId : tab.windowId,
         owned: stored.owned,
         preferredTabId: tabId,
       });
@@ -2198,9 +2346,10 @@ async function reconcileTargetLeaseRegistry(): Promise<void> {
         idleTimer: null,
         idleDeadlineAt: stored.idleDeadlineAt,
       });
-      if (session.owned) {
+      if (session.owned && tab.windowId === session.windowId) {
         const role = getOwnedWindowRole(leaseKey);
         if (ownedContainers[role].windowId === null) ownedContainers[role].windowId = tab.windowId;
+        await constrainOwnedWindowGeometry(tab.windowId);
         await ensureOwnedContainerTabGroup(role, tab.windowId, [tabId]);
       }
       const remaining = stored.idleDeadlineAt > 0 ? stored.idleDeadlineAt - Date.now() : timeout;

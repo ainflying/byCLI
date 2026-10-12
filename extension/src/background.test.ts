@@ -104,6 +104,23 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function mockDisplay(workArea: chrome.system.display.Bounds, overrides: Partial<chrome.system.display.DisplayUnitInfo> = {}): chrome.system.display.DisplayUnitInfo {
+  return {
+    id: 'primary', name: 'Test display', activeState: 'active', isEnabled: true, isPrimary: true,
+    isInternal: false, isUnified: false, mirroringSourceId: '', mirroringDestinationIds: [],
+    dpiX: 96, dpiY: 96, rotation: 0, bounds: { ...workArea }, workArea: { ...workArea },
+    overscan: { left: 0, top: 0, right: 0, bottom: 0 }, modes: [], hasTouchSupport: false,
+    displayZoomFactor: 1, availableDisplayZoomFactors: [1], ...overrides,
+  };
+}
+
+function mockWindow(id: number, overrides: Partial<chrome.windows.Window> = {}): chrome.windows.Window {
+  return {
+    id, focused: false, incognito: false, alwaysOnTop: false, type: 'normal', state: 'normal',
+    left: 0, top: 0, width: 1280, height: 900, ...overrides,
+  };
+}
+
 function createChromeMock() {
   let nextTabId = 10;
   let nextGroupId = 100;
@@ -115,6 +132,10 @@ function createChromeMock() {
   ];
   const groups: MockTabGroup[] = [];
   let lastFocusedWindowId = 2;
+  const windows = new Map<number, chrome.windows.Window>([
+    [1, mockWindow(1)], [2, mockWindow(2, { focused: true })],
+  ]);
+  const displays = [mockDisplay({ left: 0, top: 0, width: 1920, height: 1080 })];
 
   const query = vi.fn(async (queryInfo: { windowId?: number; active?: boolean; lastFocusedWindow?: boolean } = {}) => {
     return tabs.filter((tab) => {
@@ -218,11 +239,27 @@ function createChromeMock() {
       onEvent: { addListener: vi.fn() } as Listener<(source: any, method: string, params: any) => void>,
     },
     windows: {
-      get: vi.fn(async (windowId: number) => ({ id: windowId, focused: windowId === lastFocusedWindowId })),
-      create: vi.fn(async ({ url, focused, width, height, type }: any) => ({ id: 1, url, focused, width, height, type })),
-      update: vi.fn(async (windowId: number, updates: { focused?: boolean }) => ({ id: windowId, ...updates })),
+      get: vi.fn(async (windowId: number): Promise<any> => windows.get(windowId) ?? mockWindow(windowId, { focused: windowId === lastFocusedWindowId })),
+      getLastFocused: vi.fn(async (_options?: chrome.windows.QueryOptions): Promise<any> => windows.get(lastFocusedWindowId)),
+      create: vi.fn(async (options: any): Promise<any> => {
+        const win = mockWindow(1, options);
+        windows.set(1, win);
+        return win;
+      }),
+      update: vi.fn(async (windowId: number, updates: chrome.windows.UpdateInfo): Promise<any> => {
+        const win = windows.get(windowId) ?? mockWindow(windowId);
+        Object.assign(win, updates);
+        windows.set(windowId, win);
+        return win;
+      }),
       remove: vi.fn(async (_windowId: number) => {}),
       onRemoved: { addListener: vi.fn() } as Listener<(windowId: number) => void>,
+    },
+    system: {
+      display: {
+        getInfo: vi.fn(async () => displays),
+        onDisplayChanged: { addListener: vi.fn() } as Listener<() => void>,
+      },
     },
     alarms: {
       create: vi.fn(),
@@ -252,12 +289,429 @@ function createChromeMock() {
     chrome,
     tabs,
     groups,
+    windows,
+    displays,
     query,
     create,
     update,
     setLastFocusedWindowId: (windowId: number) => { lastFocusedWindowId = windowId; },
   };
 }
+
+describe('owned window work-area geometry', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    MockWebSocket.instances = [];
+    vi.stubGlobal('WebSocket', MockWebSocket);
+    vi.stubGlobal('__BYCLI_COMPAT_RANGE__', '>=1.7.0');
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    { area: { left: 0, top: 0, width: 1365, height: 768 }, want: { left: 0, top: 0, width: 1280, height: 768 } },
+    { area: { left: 0, top: 24, width: 1000, height: 700 }, want: { left: 0, top: 24, width: 1000, height: 700 } },
+    { area: { left: 0, top: 0, width: 1920, height: 1080 }, want: { left: 0, top: 0, width: 1280, height: 900 } },
+  ])('fits new background windows inside $area.width × $area.height', async ({ area, want }) => {
+    const { chrome, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay(area));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+
+    await mod.__test__.resolveTabId(undefined, browserKey('geometry'));
+
+    expect(chrome.windows.create).toHaveBeenCalledWith({ url: 'about:blank', focused: false, type: 'normal', ...want });
+  });
+
+  it('uses the normal last-focused window to select the display with the largest intersection', async () => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.push(mockDisplay({ left: -1600, top: -200, width: 1600, height: 860 }, { id: 'left', isPrimary: false }));
+    windows.set(2, mockWindow(2, { left: -1300, top: -100, width: 1500, height: 700, focused: true }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+
+    await mod.__test__.resolveTabId(undefined, adapterKey('geometry'));
+
+    expect(chrome.windows.getLastFocused).toHaveBeenCalledWith({ windowTypes: ['normal'] });
+    expect(chrome.windows.create).toHaveBeenCalledWith({
+      url: 'about:blank', focused: true, type: 'normal', left: -1600, top: -200, width: 1280, height: 860,
+    });
+  });
+
+  it('ignores disabled, inactive and invalid displays and falls back to the primary when the anchor is outside all displays', async () => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length,
+      mockDisplay({ left: 0, top: 0, width: 0, height: 1000 }),
+      mockDisplay({ left: 0, top: 0, width: 600, height: 500 }, { id: 'disabled', isEnabled: false }),
+      mockDisplay({ left: 0, top: 0, width: 800, height: 600 }, { id: 'inactive', activeState: 'inactive' }),
+      mockDisplay({ left: 1600, top: 40, width: 1365, height: 728 }, { id: 'valid' }),
+    );
+    windows.set(2, mockWindow(2, { left: -4000, top: -4000 }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+
+    await mod.__test__.resolveTabId(undefined, browserKey('geometry'));
+
+    expect(chrome.windows.create).toHaveBeenCalledWith(expect.objectContaining({ left: 1600, top: 40, width: 1280, height: 728 }));
+  });
+
+  it('clamps an existing container without changing focus and preserves valid smaller user placement', async () => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: -1600, top: 30, width: 1600, height: 738 }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await mod.__test__.resolveTabId(undefined, browserKey('first'));
+    windows.set(1, mockWindow(1, { left: -1700, top: 0, width: 1800, height: 900 }));
+    chrome.windows.update.mockClear();
+
+    await mod.__test__.resolveTabId(undefined, browserKey('second'));
+
+    expect(windows.get(1)).toMatchObject({ left: -1600, top: 30, width: 1600, height: 738, focused: false });
+    expect(chrome.windows.update).toHaveBeenCalledWith(1, { left: -1600, top: 30, width: 1600, height: 738 });
+    windows.set(1, mockWindow(1, { left: -1200, top: 80, width: 700, height: 500 }));
+    chrome.windows.update.mockClear();
+    await mod.__test__.resolveTabId(undefined, browserKey('third'));
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+    expect(windows.get(1)).toMatchObject({ left: -1200, top: 80, width: 700, height: 500 });
+    expect(chrome.windows.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('clamps a discovered owned tab-group window on its existing negative-origin display', async () => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.push(mockDisplay({ left: -1600, top: -200, width: 1600, height: 860 }, { id: 'left', isPrimary: false }));
+    windows.set(1, mockWindow(1, { left: -1500, top: -150, width: 1280, height: 900 }));
+    const group = await chrome.tabs.group({ tabIds: [1], createProperties: { windowId: 1 } });
+    await chrome.tabGroups.update(group, { title: 'byCLI Browser' });
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('discovered'))).toBe(1);
+
+    expect(windows.get(1)).toMatchObject({ left: -1500, top: -200, width: 1280, height: 860, focused: false });
+    expect(chrome.windows.create).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('restores geometry for owned leases with a stored container=%s and leaves borrowed windows alone', async (storedContainer) => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    windows.set(1, mockWindow(1, { left: 100, top: 100, width: 1280, height: 900 }));
+    windows.set(2, mockWindow(2, { left: -100, top: -100, width: 1800, height: 1000, focused: true }));
+    await chrome.storage.local.set({ bycli_target_lease_registry_v2: {
+      version: 2, contextId: 'test',
+      ownedContainers: { interactive: { windowId: storedContainer ? 1 : null }, automation: { windowId: null } },
+      leases: {
+        [browserKey('owned')]: { windowId: 1, owned: true, preferredTabId: 1, idleDeadlineAt: 0, lifecycle: 'pinned' },
+        [browserKey('bound')]: { windowId: 2, owned: false, preferredTabId: 2, idleDeadlineAt: 0, lifecycle: 'pinned' },
+      },
+    } });
+    vi.stubGlobal('chrome', chrome);
+    await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+
+    expect(windows.get(1)).toMatchObject({ left: 85, top: 0, width: 1280, height: 768, focused: false });
+    expect(windows.get(2)).toMatchObject({ left: -100, top: -100, width: 1800, height: 1000, focused: true });
+    expect(chrome.windows.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['explicit-page', 'preferred-page', 'new-tab', 'focus', 'select-page', 'select-index'] as const)('clamps the owned lease on the %s command fast path', async (path) => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    windows.set(1, mockWindow(1, { left: 200, top: -30, height: 900 }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+
+    if (path === 'focus') {
+      const result = await mod.__test__.handleTabs({ id: 'focus', action: 'tabs', op: 'focus' }, browserKey('owned'));
+      expect(result.ok).toBe(true);
+    } else if (path === 'select-page' || path === 'select-index') {
+      const result = await mod.__test__.handleTabs({
+        id: 'select', action: 'tabs', op: 'select',
+        ...(path === 'select-page' ? { page: 'target-1' } : { index: 0 }),
+      }, browserKey('owned'));
+      expect(result.ok).toBe(true);
+    } else if (path === 'new-tab') {
+      await mod.__test__.handleTabs({ id: 'new', action: 'tabs', op: 'new' }, browserKey('owned'));
+    } else {
+      expect(await mod.__test__.resolveTabId(path === 'explicit-page' ? 1 : undefined, browserKey('owned'))).toBe(1);
+    }
+
+    expect(windows.get(1)).toMatchObject({ left: 85, top: 0, width: 1280, height: 768, focused: path === 'focus' });
+    expect(chrome.windows.create).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('does not claim a user window containing a dragged owned tab during restoration (stored container=%s)', async (storedContainer) => {
+    const { chrome, tabs, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    tabs[0].windowId = 2;
+    windows.set(2, mockWindow(2, { left: -100, top: -100, width: 1800, height: 1000, focused: true }));
+    await chrome.storage.local.set({ bycli_target_lease_registry_v2: {
+      version: 2, contextId: 'test',
+      ownedContainers: { interactive: { windowId: storedContainer ? 1 : null }, automation: { windowId: null } },
+      leases: {
+        [browserKey('owned')]: { windowId: 1, owned: true, preferredTabId: 1, idleDeadlineAt: 0, lifecycle: 'pinned' },
+      },
+    } });
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+
+    expect(windows.get(2)).toMatchObject({ left: -100, top: -100, width: 1800, height: 1000, focused: true });
+    expect(mod.__test__.getSession(browserKey('owned'))?.windowId).toBe(1);
+    expect(chrome.tabs.group).not.toHaveBeenCalled();
+    expect(chrome.windows.update.mock.calls.every(([windowId]) => windowId !== 2)).toBe(true);
+    await chrome.system.display.onDisplayChanged.addListener.mock.calls[0][0]();
+    expect(chrome.windows.update.mock.calls.every(([windowId]) => windowId !== 2)).toBe(true);
+  });
+
+  it('leaves borrowed windows alone on page commands, including an owned tab dragged into a user window', async () => {
+    const { chrome, tabs, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    windows.set(2, mockWindow(2, { left: -100, top: -100, width: 1800, height: 1000, focused: true }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('bound'), { windowId: 2, owned: false, preferredTabId: 2 });
+
+    expect(await mod.__test__.resolveTabId(2, browserKey('bound'))).toBe(2);
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('bound'))).toBe(2);
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+    tabs[0].windowId = 2;
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('owned'))).toBe(1);
+    expect(windows.get(2)).toMatchObject({ left: -100, top: -100, width: 1800, height: 1000, focused: true });
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+  });
+
+  it('creates subsequent leased tabs in the recorded owned window after a tab is dragged into a user window', async () => {
+    const { chrome, tabs, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    tabs[0].windowId = 2;
+    windows.set(2, mockWindow(2, { left: -100, top: -100, width: 1800, height: 1000, focused: true }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+
+    const result = await mod.__test__.handleTabs({ id: 'new', action: 'tabs', op: 'new' }, browserKey('owned'));
+    expect(result.ok).toBe(true);
+    expect(mod.__test__.getSession(browserKey('owned'))?.windowId).toBe(1);
+    expect(tabs.find(tab => tab.id === 10)?.windowId).toBe(1);
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('owned'))).toBe(10);
+    await chrome.system.display.onDisplayChanged.addListener.mock.calls[0][0]();
+
+    expect(windows.get(2)).toMatchObject({ left: -100, top: -100, width: 1800, height: 1000, focused: true });
+    expect(chrome.windows.update.mock.calls.every(([windowId]) => windowId !== 2)).toBe(true);
+  });
+
+  it('does not rediscover a dragged owned group in a user window when the original owned window has closed', async () => {
+    const { chrome, tabs, groups, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    tabs[0].windowId = 2;
+    tabs[0].groupId = 100;
+    groups.push({ id: 100, windowId: 2, title: 'byCLI Browser', color: 'orange', collapsed: false });
+    windows.set(2, mockWindow(2, { left: -100, top: -100, width: 1800, height: 1000, focused: true }));
+    const getWindow = chrome.windows.get;
+    chrome.windows.get = vi.fn(async (windowId: number) => {
+      if (windowId === 1) throw new Error('original window closed');
+      return getWindow(windowId);
+    });
+    chrome.windows.create = vi.fn(async (options: any) => {
+      const win = mockWindow(3, options);
+      windows.set(3, win);
+      tabs.push({ id: 200, windowId: 3, url: options.url, active: true, status: 'complete', groupId: -1 });
+      return win;
+    });
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+
+    const result = await mod.__test__.handleTabs({ id: 'new', action: 'tabs', op: 'new' }, browserKey('owned'));
+
+    expect(result.ok).toBe(true);
+    expect(mod.__test__.getSession(browserKey('owned'))?.windowId).toBe(3);
+    expect(chrome.windows.create).toHaveBeenCalledOnce();
+    expect(windows.get(2)).toMatchObject({ left: -100, top: -100, width: 1800, height: 1000, focused: true });
+    expect(chrome.windows.update.mock.calls.every(([windowId]) => windowId !== 2)).toBe(true);
+  });
+
+  it.each(['reload', 'reuse', 'removed-event'] as const)('preserves ownership evidence for a moved placeholder group with no leases during %s', async (path) => {
+    const { chrome, tabs, groups, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    const groupId = await chrome.tabs.group({ tabIds: [1], createProperties: { windowId: 1 } });
+    await chrome.tabGroups.update(groupId, { title: 'byCLI Browser', color: 'orange', collapsed: false });
+    windows.set(2, mockWindow(2, { left: -100, top: -100, width: 1800, height: 1000, focused: true }));
+    let originalClosed = path === 'reload';
+    if (originalClosed) {
+      tabs[0].windowId = 2;
+      groups[0].windowId = 2;
+    }
+    const getWindow = chrome.windows.get;
+    chrome.windows.get = vi.fn(async (windowId: number) => {
+      if (windowId === 1 && originalClosed) throw new Error('original window closed');
+      return getWindow(windowId);
+    });
+    chrome.windows.create = vi.fn(async (options: any) => {
+      const win = mockWindow(3, options);
+      windows.set(3, win);
+      tabs.push({ id: 200, windowId: 3, url: options.url, active: true, status: 'complete', groupId: -1 });
+      return win;
+    });
+    await chrome.storage.local.set({ bycli_target_lease_registry_v2: {
+      version: 2, contextId: 'test',
+      ownedContainers: { interactive: { windowId: 1, groupId }, automation: { windowId: null } },
+      leases: {},
+    } });
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    if (path !== 'reload') {
+      tabs[0].windowId = 2;
+      groups[0].windowId = 2;
+      originalClosed = true;
+    }
+    chrome.windows.update.mockClear();
+    if (path === 'removed-event') {
+      await chrome.windows.onRemoved.addListener.mock.calls[0][0](1);
+    }
+
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('placeholder'))).toBe(200);
+    expect(mod.__test__.getSession(browserKey('placeholder'))?.windowId).toBe(3);
+    expect(chrome.windows.create).toHaveBeenCalledOnce();
+    await chrome.system.display.onDisplayChanged.addListener.mock.calls[0][0]();
+    expect(windows.get(2)).toMatchObject({ left: -100, top: -100, width: 1800, height: 1000, focused: true });
+    expect(chrome.windows.update.mock.calls.every(([windowId]) => windowId !== 2)).toBe(true);
+  });
+
+  it('can rediscover a placeholder group moved into another recorded owned container during reload', async () => {
+    const { chrome, tabs, groups, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    tabs[0].windowId = 2;
+    tabs[0].groupId = 100;
+    groups.push({ id: 100, windowId: 2, title: 'byCLI Browser', color: 'orange', collapsed: false });
+    groups.push({ id: 101, windowId: 2, title: 'byCLI Adapter', color: 'orange', collapsed: false });
+    const getWindow = chrome.windows.get;
+    chrome.windows.get = vi.fn(async (windowId: number) => {
+      if (windowId === 1) throw new Error('original window closed');
+      return getWindow(windowId);
+    });
+    await chrome.storage.local.set({ bycli_target_lease_registry_v2: {
+      version: 2, contextId: 'test',
+      ownedContainers: { interactive: { windowId: 1, groupId: 100 }, automation: { windowId: 2, groupId: 101 } },
+      leases: {},
+    } });
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('placeholder'))).toBe(1);
+    expect(mod.__test__.getSession(browserKey('placeholder'))?.windowId).toBe(2);
+    expect(chrome.windows.create).not.toHaveBeenCalled();
+  });
+
+  it.each(['minimized', 'maximized', 'fullscreen'] as const)('preserves the %s state of reused owned windows', async (state) => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    windows.set(1, mockWindow(1, { state, left: -100, top: -100, width: 1800, height: 1000 }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+
+    await mod.__test__.resolveTabId(undefined, browserKey('owned'));
+
+    expect(windows.get(1)?.state).toBe(state);
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing', 'error', 'empty', 'invalid'] as const)('uses natural creation bounds and diagnoses %s display metadata', async (failure) => {
+    const { chrome } = createChromeMock();
+    if (failure === 'missing') (chrome.system as any).display = undefined;
+    if (failure === 'error') chrome.system.display.getInfo.mockRejectedValue(new Error('display unavailable'));
+    if (failure === 'empty') chrome.system.display.getInfo.mockResolvedValue([]);
+    if (failure === 'invalid') chrome.system.display.getInfo.mockResolvedValue([mockDisplay({ left: NaN, top: 0, width: 0, height: -1 })]);
+    const warn = vi.spyOn(console, 'warn');
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+
+    await mod.__test__.resolveTabId(undefined, browserKey('new'));
+
+    expect(chrome.windows.create).toHaveBeenCalledWith({ url: 'about:blank', focused: false, type: 'normal' });
+    await mod.__test__.resolveTabId(undefined, browserKey('reuse'));
+    expect(chrome.windows.create).toHaveBeenCalledTimes(1);
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/display|work area/i));
+  });
+
+  it('keeps a live owned lease when display reads or geometry updates fail', async () => {
+    const { chrome, windows, displays } = createChromeMock();
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+    windows.set(1, mockWindow(1, { height: 900 }));
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+    const warn = vi.spyOn(console, 'warn');
+    chrome.system.display.getInfo.mockRejectedValueOnce(new Error('display unavailable'));
+
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('owned'))).toBe(1);
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+    chrome.windows.update.mockRejectedValueOnce(new Error('update unavailable'));
+    expect(await mod.__test__.resolveTabId(undefined, browserKey('owned'))).toBe(1);
+    expect(mod.__test__.getSession(browserKey('owned'))?.preferredTabId).toBe(1);
+    expect(chrome.windows.create).not.toHaveBeenCalled();
+    expect(windows.get(1)?.height).toBe(900);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/display|work area/i));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/geometry|bounds/i));
+  });
+
+  it('corrects only owned normal windows when the display work area changes', async () => {
+    const { chrome, windows, displays } = createChromeMock();
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+    mod.__test__.setSession(browserKey('bound'), { windowId: 2, owned: false, preferredTabId: 2 });
+    windows.set(2, mockWindow(2, { height: 1000, focused: true }));
+    displays.splice(0, displays.length, mockDisplay({ left: 0, top: 0, width: 1365, height: 768 }));
+
+    expect(chrome.system.display.onDisplayChanged.addListener).toHaveBeenCalledOnce();
+    await chrome.system.display.onDisplayChanged.addListener.mock.calls[0][0]();
+
+    expect(windows.get(1)).toMatchObject({ left: 0, top: 0, width: 1280, height: 768, focused: false });
+    expect(windows.get(2)).toMatchObject({ height: 1000, focused: true });
+    expect(chrome.windows.update).toHaveBeenCalledTimes(1);
+    await chrome.system.display.onDisplayChanged.addListener.mock.calls[0][0]();
+    expect(chrome.windows.update).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['minimize', 'move'] as const)('does not overwrite a user %s while display metadata is being queried', async (action) => {
+    const { chrome, windows } = createChromeMock();
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    await vi.waitFor(() => expect(MockWebSocket.instances).toHaveLength(1));
+    mod.__test__.setSession(browserKey('owned'), { windowId: 1, owned: true, preferredTabId: 1 });
+    const query = deferred<chrome.system.display.DisplayUnitInfo[]>();
+    chrome.system.display.getInfo.mockImplementationOnce(() => query.promise);
+
+    const command = mod.__test__.resolveTabId(undefined, browserKey('owned'));
+    await vi.waitFor(() => expect(chrome.system.display.getInfo).toHaveBeenCalledOnce());
+    const changed = action === 'minimize'
+      ? mockWindow(1, { state: 'minimized' })
+      : mockWindow(1, { left: 30, top: 20, width: 700, height: 500 });
+    windows.set(1, changed);
+    query.resolve([mockDisplay({ left: 0, top: 0, width: 1365, height: 768 })]);
+
+    expect(await command).toBe(1);
+    expect(windows.get(1)).toMatchObject(action === 'minimize'
+      ? { state: 'minimized', left: 0, top: 0, width: 1280, height: 900 }
+      : { state: 'normal', left: 30, top: 20, width: 700, height: 500 });
+    expect(chrome.windows.update).not.toHaveBeenCalled();
+  });
+});
 
 describe('background tab isolation', () => {
   beforeEach(() => {
@@ -1128,7 +1582,11 @@ describe('background tab isolation', () => {
     vi.setSystemTime(1_000);
     const { chrome, tabs } = createChromeMock();
     const foregroundWindow = deferred<{ id: number; focused: boolean }>();
-    chrome.windows.update = vi.fn(async () => foregroundWindow.promise);
+    const focusStarted = deferred<void>();
+    chrome.windows.update = vi.fn(async () => {
+      focusStarted.resolve();
+      return foregroundWindow.promise;
+    });
     vi.stubGlobal('chrome', chrome);
 
     const mod = await import('./background');
@@ -1142,7 +1600,7 @@ describe('background tab isolation', () => {
       { id: 'hold-alarm-lock', action: 'tabs', op: 'focus', session: 'alarm-renewed', surface: 'adapter', page: 'target-1' },
       key,
     );
-    for (let i = 0; i < 10 && chrome.windows.update.mock.calls.length === 0; i++) await Promise.resolve();
+    await focusStarted.promise;
     expect(chrome.windows.update).toHaveBeenCalledWith(1, { focused: true });
 
     vi.setSystemTime(oldDeadline);
@@ -1177,7 +1635,11 @@ describe('background tab isolation', () => {
     vi.setSystemTime(1_000);
     const { chrome, tabs } = createChromeMock();
     const foregroundWindow = deferred<{ id: number; focused: boolean }>();
-    chrome.windows.update = vi.fn(async () => foregroundWindow.promise);
+    const focusStarted = deferred<void>();
+    chrome.windows.update = vi.fn(async () => {
+      focusStarted.resolve();
+      return foregroundWindow.promise;
+    });
     vi.stubGlobal('chrome', chrome);
 
     const mod = await import('./background');
@@ -1191,7 +1653,7 @@ describe('background tab isolation', () => {
       { id: 'hold-timer-lock', action: 'tabs', op: 'focus', session: 'timer-renewed', surface: 'adapter', page: 'target-1' },
       key,
     );
-    for (let i = 0; i < 10 && chrome.windows.update.mock.calls.length === 0; i++) await Promise.resolve();
+    await focusStarted.promise;
     expect(chrome.windows.update).toHaveBeenCalledWith(1, { focused: true });
 
     vi.advanceTimersByTime(1_000);
