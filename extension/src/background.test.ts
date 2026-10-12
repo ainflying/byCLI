@@ -304,6 +304,7 @@ describe('owned window work-area geometry', () => {
     MockWebSocket.instances = [];
     vi.stubGlobal('WebSocket', MockWebSocket);
     vi.stubGlobal('__BYCLI_COMPAT_RANGE__', '>=1.7.0');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true })));
   });
   afterEach(() => {
     vi.unstubAllGlobals();
