@@ -1,3 +1,4 @@
+import { createContext, runInContext } from 'node:vm';
 import { describe, it, expect } from 'vitest';
 import { generateStealthJs } from './stealth.js';
 
@@ -5,10 +6,8 @@ import { generateStealthJs } from './stealth.js';
  * Tests for the stealth anti-detection module.
  *
  * We test the generated JS string for expected content and structure.
- * Evaluating in Node is fragile because stealth patches target browser
- * globals (navigator, Performance, HTMLIFrameElement) that don't exist
- * or behave differently in Node. Instead we verify the code string
- * contains the right patches and is syntactically valid.
+ * Browser-only patches retain structural checks. Eval compatibility is
+ * exercised with the real generated script in an isolated JavaScript context.
  */
 
 describe('generateStealthJs', () => {
@@ -73,16 +72,13 @@ describe('generateStealthJs', () => {
     expect(code).toContain("'debugger://'");
   });
 
-  it('neutralizes debugger statement traps', () => {
+  it('neutralizes debugger statements in dynamic Function bodies', () => {
     const code = generateStealthJs();
     // Should patch Function constructor with new.target / Reflect.construct
     expect(code).toContain('_OrigFunction');
     expect(code).toContain('_PatchedFunction');
     expect(code).toContain('new.target');
     expect(code).toContain('Reflect.construct');
-    // Should patch eval
-    expect(code).toContain('_origEval');
-    expect(code).toContain('_patchedEval');
     // Regex to strip debugger (lookbehind for statement boundaries)
     expect(code).toContain('_debuggerRe');
   });
@@ -94,7 +90,7 @@ describe('generateStealthJs', () => {
     expect(code).toContain('WeakMap');
     expect(code).toContain('_disguised');
     expect(code).toContain('_disguise');
-    // Should NOT have per-instance toString overrides on Function/eval
+    // Should NOT have per-instance toString overrides on Function
     // (they go through _disguise instead)
   });
 
@@ -149,5 +145,85 @@ describe('generateStealthJs', () => {
     // new Function() parses the code without executing it in a real
     // browser context, catching syntax errors from template literal issues.
     expect(() => new Function(code)).not.toThrow();
+  });
+});
+
+/** Catch regressions that replace native eval and lose the caller's scope. */
+describe('stealth eval compatibility', () => {
+  function injectStealth() {
+    const context = createContext({});
+    runInContext(`
+      globalThis.window = globalThis;
+      globalThis.EventTarget = class EventTarget {};
+      globalThis.navigator = {};
+      globalThis.document = {};
+    `, context);
+    runInContext(generateStealthJs(), context);
+    return context;
+  }
+
+  it('preserves direct eval reads from the caller lexical scope', () => {
+    const context = injectStealth();
+    expect(runInContext(`(() => {
+      const localValue = 37;
+      return eval('localValue');
+    })()`, context)).toBe(37);
+  });
+
+  it('preserves direct eval writes without creating a global variable', () => {
+    const context = injectStealth();
+    expect(runInContext(`(() => {
+      let localValue = 1;
+      eval('localValue = 9');
+      return localValue;
+    })()`, context)).toBe(9);
+    expect(runInContext("'localValue' in globalThis", context)).toBe(false);
+  });
+
+  it('preserves strict caller scope when reading local variables', () => {
+    const context = injectStealth();
+    expect(runInContext(`(() => {
+      'use strict';
+      const localValue = 42;
+      return eval('localValue');
+    })()`, context)).toBe(42);
+  });
+
+  it('keeps strict eval declarations out of the global scope', () => {
+    const context = injectStealth();
+    expect(runInContext(`(() => {
+      'use strict';
+      eval('var strictTemporary = 1');
+      return typeof strictTemporary;
+    })()`, context)).toBe('undefined');
+    expect(runInContext("'strictTemporary' in globalThis", context)).toBe(false);
+  });
+
+  it('keeps native eval non-string input and thrown exceptions', () => {
+    const context = injectStealth();
+    expect(runInContext('eval(17)', context)).toBe(17);
+    expect(runInContext(`(() => {
+      try { eval('throw new Error("probe-error")'); }
+      catch (error) { return error.message; }
+    })()`, context)).toBe('probe-error');
+  });
+
+  it('preserves eval semantics after repeated stealth injection', () => {
+    const context = injectStealth();
+    runInContext(generateStealthJs(), context);
+    expect(runInContext(`(() => {
+      const localValue = 37;
+      return eval('localValue');
+    })()`, context)).toBe(37);
+  });
+
+  it('still strips debugger statements from dynamic Function bodies', () => {
+    const context = injectStealth();
+    const result = runInContext(`(() => {
+      const fn = new Function('debugger; return 7;');
+      return { result: fn(), body: fn.toString() };
+    })()`, context);
+    expect(result.result).toBe(7);
+    expect(result.body).not.toContain('debugger;');
   });
 });
