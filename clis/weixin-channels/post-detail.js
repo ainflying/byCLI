@@ -8,7 +8,7 @@ export const postDetailCommand = cli({
   name: 'post-detail',
   access: 'read',
   domain: 'channels.weixin.qq.com',
-  description: '读取单条视频号作品的概览、趋势、来源和留存，默认最近 7 天；建议使用 --format json',
+  description: '读取单条视频号作品的概览、趋势、来源占比、逐日来源明细和留存，默认最近 7 天；建议使用 --format json',
   strategy: Strategy.COOKIE,
   browser: true,
   navigateBefore: false,
@@ -18,7 +18,7 @@ export const postDetailCommand = cli({
     { name: 'start-date', type: 'str', valueRequired: true, help: '统计开始日期 YYYY-MM-DD（包含），须同时提供 --end-date' },
     { name: 'end-date', type: 'str', valueRequired: true, help: '统计结束日期 YYYY-MM-DD（包含），最晚为上海昨日' },
   ],
-  columns: ['id', 'start_date', 'end_date', 'overview', 'trend', 'sources', 'retention'],
+  columns: ['id', 'start_date', 'end_date', 'overview', 'trend', 'sources', 'data_details', 'retention'],
   func: async (page, args = {}) => {
     const id = args.id;
     if (typeof id !== 'string' || !/^\d+$/.test(id)) {

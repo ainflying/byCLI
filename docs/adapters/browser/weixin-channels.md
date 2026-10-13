@@ -10,9 +10,9 @@
 | --- | --- | --- |
 | `bycli weixin-channels overview` | 账号指标概览，返回一行 | 昨日 |
 | `bycli weixin-channels trend` | 账号逐日指标，按日期排列 | 最近 7 天 |
-| `bycli weixin-channels sources` | 按后台来源标签汇总账号指标 | 最近 7 天 |
+| `bycli weixin-channels sources` | 按后台来源标签汇总账号指标及播放占比 | 最近 7 天 |
 | `bycli weixin-channels posts` | 按发布时间筛选作品，返回作品累计指标 | 最近 30 天 |
-| `bycli weixin-channels post-detail <id>` | 单篇作品概览、趋势、来源和留存，返回一行 | 最近 7 天 |
+| `bycli weixin-channels post-detail <id>` | 单篇作品概览、趋势、来源占比、逐日来源明细和留存，返回一行 | 最近 7 天 |
 
 默认窗口均截至 **Asia/Shanghai 的昨日**，不含今天尚未结算的数据。命令读取当前登录账号，不接受 Cookie 或签名参数。
 
@@ -66,6 +66,7 @@ bycli weixin-channels post-detail '<id>' \
 | `follows` | 每日统计为净新增关注；作品列表为后台累计关注指标 | `follow` / `followCount` |
 | `completion_rate` | 完播率，单位为百分数，例如 `1.95` 表示 1.95% | `fullPlayRate` × 100 |
 | `avg_play_seconds` | 平均播放时长，单位为秒 | `avgPlayTimeSec` |
+| `views_pct` | 来源播放占所选周期总播放的百分比，例如 `64.29` 表示 64.29% | 来源 `browse` 之和 ÷ `totalData.browse` 之和 × 100 |
 
 `shares` 使用后台提供的分享汇总，包含其统计的分享渠道；不能把它当作仅“转发给朋友”的 `forward`，也不能把汇总值再与各分享渠道相加。推荐和喜欢是两个不同指标，分别保留。
 
@@ -74,6 +75,8 @@ bycli weixin-channels post-detail '<id>' \
 计数 `0` 表示后台明确给出零；`null` 表示未提供该指标。空数组、缺失值和不支持的指标不会被补成零。鉴权、请求或数据结构异常会报告错误，不会生成一组成功的零计数。
 
 `overview` 返回 `start_date`、`end_date` 和上述六项计数，是所选日期的**每日统计之和**；`trend` 返回 `date` 和逐日计数。`sources` 使用后台返回的来源名称和 ID，不根据名称合并来源；JSON 中保留 `source_id`、`start_date` 和 `end_date`。
+
+`sources` 的 `views_pct` 保留两位小数，分母是账号或作品的后台总播放次数，不使用已返回来源播放次数之和代替。总播放为零或缺失、该来源播放缺失时返回 `null`；总播放大于零且该来源播放明确为零时返回 `0`。各来源独立舍入后占比之和可能不恰好等于 100。
 
 `posts` 的日期只用于筛选**作品发布时间**，作品计数是后台返回的**累计指标**，不会因为指定了日期窗口就变成该窗口内的增量。因此作品列表计数之和不应直接与账号 `overview` 对账。没有符合发布时间条件的作品时，JSON 返回 `[]`。
 
@@ -84,11 +87,22 @@ bycli weixin-channels post-detail '<id>' \
 | `id`、`start_date`、`end_date` | 原样保留的作品 ID 和统计窗口 |
 | `overview` | 该作品在所选统计周期内的指标汇总 |
 | `trend` | 该作品在所选统计周期内的逐日指标 |
-| `sources` | 该作品在所选统计周期内的来源汇总 |
+| `sources` | 该作品在所选统计周期内的来源汇总及 `views_pct` |
+| `data_details` | 逐日来源明细，按日期升序排列；每行含 `date`、`source_id`、`source` 和六项计数，同日按后台来源顺序排列 |
 | `retention` | `video_seconds`、`max_loss_second` 和 `points`；每个点含 `second` 与百分数 `retained_pct` |
 | `fans_breakdown_available` | 后台是否提供可用的粉丝拆分数据 |
 
 留存曲线描述作品播放进度上的留存，`second` 为播放到的秒数；它不是日历日期序列。
+
+`data_details` 保留各来源的每日数据，`trend` 是全部来源的每日统计，二者不能相加。不存在来源时明细返回 `[]`；来源存在但某项指标未提供时保留 `null`。同名但 ID 不同的来源保持独立，净变化指标中的负数原样保留。
+
+## Agent / 技能接入
+
+调用方先用 `bycli list -f json` 动态发现 `weixin-channels`，再查看相应命令的 `--help`；采集命令使用 `-f json`。浏览器桥接按调用方技能的统一入口预检，适配器自行管理 TAB，无需预先运行 raw browser 命令。
+
+`weixin-channels` 是视频号统计命名空间。`bycli weixin` 的公众号登录 Runner 不接受它，不能将命令改写成公众号命令。`post-detail` 的结果为对象数组，明细位于第一项的 `data_details`，调用方应完整保存嵌套 JSON。
+
+通过 `knowledge-collection` 归档时，统计 JSON 可作为会话 `raw/` 下的原始证据；正式物化产物仍须符合该技能的 Markdown 与 sanitized 目录契约。统计数据不属于公众号文章全文，不能交给公众号下载 materializer 或标记为 `full-text`。完整归档流程还需要上游提供 Session Root 和合法的采集会话；这里只提供网站执行层的结构化数据。
 
 ## 会话与登录
 

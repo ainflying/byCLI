@@ -174,6 +174,7 @@ export function normalizeSources(data, range) {
     if (!isRecord(data) || !Array.isArray(data.dataByTabtype)) {
         throw new CommandExecutionError('Weixin Channels returned malformed source metrics');
     }
+    const totalViews = normalizeOverview(data, range).views;
     return data.dataByTabtype.map((item) => {
         if (!isRecord(item) || item.tabType == null || typeof item.tabTypeName !== 'string' || !isRecord(item.data)) {
             throw new CommandExecutionError('Weixin Channels returned a source without its identity or metrics');
@@ -181,10 +182,13 @@ export function normalizeSources(data, range) {
         if (typeof item.tabType !== 'string' && !(Number.isSafeInteger(item.tabType) && item.tabType >= 0)) {
             throw new CommandExecutionError('Weixin Channels returned an invalid source identity');
         }
+        const overview = normalizeOverview({ totalData: item.data }, range);
         return {
-            ...normalizeOverview({ totalData: item.data }, range),
+            ...overview,
             source_id: item.tabType,
             source: item.tabTypeName,
+            views_pct: totalViews === null || totalViews === 0 || overview.views === null
+                ? null : roundTwo(overview.views / totalViews * 100),
         };
     });
 }
@@ -242,13 +246,20 @@ export function normalizeDetail(data, retention, id, range) {
         throw new CommandExecutionError('Weixin Channels returned an unexpected single-post detail payload');
     }
     const feed = data.feedData[0];
+    const sources = normalizeSources(feed, range);
+    const trend = normalizeTrend(feed, range);
+    const sourceTrends = feed.dataByTabtype.map((item) => normalizeTrend({ totalData: item.data }, range));
     return {
         id: postId(id),
         start_date: range.startDate,
         end_date: range.endDate,
         overview: normalizeOverview(feed, range),
-        trend: normalizeTrend(feed, range),
-        sources: normalizeSources(feed, range),
+        trend,
+        sources,
+        data_details: trend.flatMap((_, dayIndex) => sources.map((source, sourceIndex) => {
+            const { date, ...metrics } = sourceTrends[sourceIndex][dayIndex];
+            return { date, source_id: source.source_id, source: source.source, ...metrics };
+        })),
         retention: normalizeRetention(retention),
         fans_breakdown_available: !data.notExistFansData,
     };

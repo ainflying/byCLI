@@ -7,7 +7,7 @@ export const sourcesCommand = cli({
   name: 'sources',
   access: 'read',
   domain: 'channels.weixin.qq.com',
-  description: '按视频号后台返回的来源统计账号指标，默认最近 7 天，截至昨日',
+  description: '按视频号后台来源汇总账号指标及播放占比，默认最近 7 天，截至昨日',
   strategy: Strategy.COOKIE,
   browser: true,
   navigateBefore: false,
@@ -16,7 +16,7 @@ export const sourcesCommand = cli({
     { name: 'start-date', type: 'str', valueRequired: true, help: '开始日期 YYYY-MM-DD（包含），须同时提供 --end-date' },
     { name: 'end-date', type: 'str', valueRequired: true, help: '结束日期 YYYY-MM-DD（包含），最晚为上海昨日' },
   ],
-  columns: ['source', 'views', 'recommendations', 'likes', 'comments', 'shares', 'follows'],
+  columns: ['source', 'views', 'views_pct', 'recommendations', 'likes', 'comments', 'shares', 'follows'],
   func: async (page, args = {}) => {
     const range = resolveDateRange(args, new Date(), 7);
     const data = await fetchTotalData(page, range);

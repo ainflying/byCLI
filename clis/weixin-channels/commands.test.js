@@ -96,14 +96,14 @@ describe('weixin-channels command contract', () => {
       'date', 'views', 'recommendations', 'likes', 'comments', 'shares', 'follows',
     ]);
     expect(command('sources').columns).toEqual([
-      'source', 'views', 'recommendations', 'likes', 'comments', 'shares', 'follows',
+      'source', 'views', 'views_pct', 'recommendations', 'likes', 'comments', 'shares', 'follows',
     ]);
     expect(command('posts').columns).toEqual([
       'id', 'title', 'published_at', 'views', 'recommendations', 'likes', 'comments',
       'shares', 'follows', 'completion_rate', 'avg_play_seconds',
     ]);
     expect(command('post-detail').columns).toEqual([
-      'id', 'start_date', 'end_date', 'overview', 'trend', 'sources', 'retention',
+      'id', 'start_date', 'end_date', 'overview', 'trend', 'sources', 'data_details', 'retention',
     ]);
     expect(command('post-detail').args.find(arg => arg.name === 'id')).toMatchObject({
       required: true, positional: true, type: 'str',
@@ -130,7 +130,7 @@ describe('weixin-channels query results', () => {
     const rows = await command('sources').func({}, {});
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      start_date: '2026-10-06', end_date: '2026-10-12', source: '推荐', views: 7, likes: null,
+      start_date: '2026-10-06', end_date: '2026-10-12', source: '推荐', views: 7, views_pct: 100, likes: null,
     });
   });
 
@@ -181,7 +181,11 @@ describe('weixin-channels query results', () => {
       id: '18446744073709551615', start_date: '2026-10-11', end_date: '2026-10-12',
       overview: { views: 2, comments: 0, likes: null },
       trend: [{ date: '2026-10-11', views: 1 }, { date: '2026-10-12', views: 1 }],
-      sources: [{ source: '推荐', views: 2 }],
+      sources: [{ source: '推荐', views: 2, views_pct: 100 }],
+      data_details: [
+        { date: '2026-10-11', source_id: 4, source: '推荐', views: 1, recommendations: null, likes: null, comments: null, shares: null, follows: null },
+        { date: '2026-10-12', source_id: 4, source: '推荐', views: 1, recommendations: null, likes: null, comments: null, shares: null, follows: null },
+      ],
       retention: {
         video_seconds: 107, max_loss_second: 21,
         points: [{ second: 0, retained_pct: 100 }, { second: 21, retained_pct: 12.5 }],

@@ -194,9 +194,9 @@ describe('weixin-channels source metrics', () => {
             token: 'private-token',
         }, TWO_DAYS)).toEqual([
             { start_date: '2026-02-28', end_date: '2026-03-01', views: 12, recommendations: 1, likes: null,
-                comments: null, shares: null, follows: null, source_id: 1, source: '推荐' },
+                comments: null, shares: null, follows: null, source_id: 1, source: '推荐', views_pct: null },
             { start_date: '2026-02-28', end_date: '2026-03-01', views: 7, recommendations: null, likes: 1,
-                comments: null, shares: null, follows: null, source_id: 12, source: '朋友赞过' },
+                comments: null, shares: null, follows: null, source_id: 12, source: '朋友赞过', views_pct: null },
         ]);
     });
 
@@ -211,8 +211,61 @@ describe('weixin-channels source metrics', () => {
         }] }, TWO_DAYS)).toEqual([{
             start_date: '2026-02-28', end_date: '2026-03-01', views: null,
             recommendations: -1, likes: -2, comments: -1, shares: null, follows: -1,
-            source_id: 1, source: '推荐',
+            source_id: 1, source: '推荐', views_pct: null,
         }]);
+    });
+
+    it('computes rounded source shares using the same-period total without merging names', () => {
+        const rows = normalizeSources({
+            totalData: { browse: [3, '3'] },
+            dataByTabtype: [
+                { tabType: 1, tabTypeName: '推荐', data: { browse: [1, '1'], follow: [-1, 0] } },
+                { tabType: 2, tabTypeName: '推荐', data: { browse: ['2', 2] } },
+            ],
+        }, TWO_DAYS);
+        expect(rows).toEqual([
+            { start_date: '2026-02-28', end_date: '2026-03-01', views: 2, recommendations: null, likes: null,
+                comments: null, shares: null, follows: -1, source_id: 1, source: '推荐', views_pct: 33.33 },
+            { start_date: '2026-02-28', end_date: '2026-03-01', views: 4, recommendations: null, likes: null,
+                comments: null, shares: null, follows: null, source_id: 2, source: '推荐', views_pct: 66.67 },
+        ]);
+    });
+
+    it.each([
+        { totalData: undefined }, { totalData: {} }, { totalData: { browse: [] } },
+        { totalData: { browse: [0, '0'] } },
+    ])('leaves shares unknown when total views are unavailable or zero: %j', (data) => {
+        const rows = normalizeSources({ ...data, dataByTabtype: [
+            { tabType: 1, tabTypeName: '推荐', data: { browse: [1, 2] } },
+        ] }, TWO_DAYS);
+        expect(rows[0]).toMatchObject({ views: 3, views_pct: null });
+    });
+
+    it('keeps zero source shares distinct from missing source views', () => {
+        const rows = normalizeSources({
+            totalData: { browse: [4, 6] },
+            dataByTabtype: [
+                { tabType: 1, tabTypeName: '推荐', data: { browse: ['0', 0] } },
+                { tabType: 2, tabTypeName: '搜索', data: { browse: [] } },
+                { tabType: 3, tabTypeName: '其他', data: {} },
+            ],
+        }, TWO_DAYS);
+        expect(rows.map(({ views, views_pct }) => ({ views, views_pct }))).toEqual([
+            { views: 0, views_pct: 0 }, { views: null, views_pct: null }, { views: null, views_pct: null },
+        ]);
+    });
+
+    it('does not renormalize known sources to 100 percent when another source is unknown', () => {
+        const rows = normalizeSources({
+            totalData: { browse: [4, 6] },
+            dataByTabtype: [
+                { tabType: 1, tabTypeName: '推荐', data: { browse: [2, 4] } },
+                { tabType: 2, tabTypeName: '其他', data: {} },
+            ],
+        }, TWO_DAYS);
+        expect(rows.map(({ source_id, views_pct }) => ({ source_id, views_pct }))).toEqual([
+            { source_id: 1, views_pct: 60 }, { source_id: 2, views_pct: null },
+        ]);
     });
 
     it.each([{}, { dataByTabtype: null }, { dataByTabtype: {} }])('rejects an absent or malformed sources array: %j', (data) => {
@@ -332,7 +385,13 @@ describe('weixin-channels post detail', () => {
                 { date: '2026-03-01', views: 20, recommendations: 0, likes: 2, comments: 4, shares: 1, follows: 0 },
             ],
             sources: [{ start_date: '2026-02-28', end_date: '2026-03-01', views: 12, recommendations: null, likes: null,
-                comments: null, shares: null, follows: null, source_id: 1, source: '推荐' }],
+                comments: null, shares: null, follows: null, source_id: 1, source: '推荐', views_pct: 37.5 }],
+            data_details: [
+                { date: '2026-02-28', source_id: 1, source: '推荐', views: 10, recommendations: null, likes: null,
+                    comments: null, shares: null, follows: null },
+                { date: '2026-03-01', source_id: 1, source: '推荐', views: 2, recommendations: null, likes: null,
+                    comments: null, shares: null, follows: null },
+            ],
             retention: {
                 video_seconds: 107, max_loss_second: 21,
                 points: [{ second: 0, retained_pct: 100 }, { second: 21, retained_pct: 4.41 }, { second: 107, retained_pct: 0 }],
@@ -345,6 +404,39 @@ describe('weixin-channels post detail', () => {
         const result = normalizeDetail({ ...data, notExistFansData: false }, retention, '1', TWO_DAYS);
         expect(result.fans_breakdown_available).toBe(true);
         expect(result).not.toHaveProperty('dataByFanstype');
+    });
+
+    it('flattens multiple source series by ascending date while preserving source order and net values', () => {
+        const detailData = { feedData: [{
+            totalData: { browse: [3, 5] },
+            dataByTabtype: [
+                { tabType: 12, tabTypeName: '推荐', data: { browse: [1, '2'], like: ['-1', 0], fav: [0, '-2'] }, username: 'private' },
+                { tabType: 1, tabTypeName: '推荐', data: { browse: ['2', 3], comment: [-1, 0], forwardAggregation: [0, 1], follow: ['-2', 1] } },
+            ],
+        }] };
+        expect(normalizeDetail(detailData, retention, '1', TWO_DAYS).data_details).toEqual([
+            { date: '2026-02-28', source_id: 12, source: '推荐', views: 1, recommendations: -1, likes: 0, comments: null, shares: null, follows: null },
+            { date: '2026-02-28', source_id: 1, source: '推荐', views: 2, recommendations: null, likes: null, comments: -1, shares: 0, follows: -2 },
+            { date: '2026-03-01', source_id: 12, source: '推荐', views: 2, recommendations: 0, likes: -2, comments: null, shares: null, follows: null },
+            { date: '2026-03-01', source_id: 1, source: '推荐', views: 3, recommendations: null, likes: null, comments: 0, shares: 1, follows: 1 },
+        ]);
+    });
+
+    it('returns empty source aggregates and data details for an explicitly empty source array', () => {
+        const result = normalizeDetail({ feedData: [{ totalData: { browse: [1, 2] }, dataByTabtype: [] }] }, retention, '1', TWO_DAYS);
+        expect(result).toMatchObject({ sources: [], data_details: [] });
+    });
+
+    it('retains daily rows with unavailable source metrics instead of inventing zero', () => {
+        const result = normalizeDetail({ feedData: [{
+            totalData: { browse: [1, 2] },
+            dataByTabtype: [{ tabType: 1, tabTypeName: '其他', data: { browse: [], like: [0, '0'] } }],
+        }] }, retention, '1', TWO_DAYS);
+        expect(result.data_details).toEqual([
+            { date: '2026-02-28', source_id: 1, source: '其他', views: null, recommendations: 0, likes: null, comments: null, shares: null, follows: null },
+            { date: '2026-03-01', source_id: 1, source: '其他', views: null, recommendations: 0, likes: null, comments: null, shares: null, follows: null },
+        ]);
+        expect(result.sources[0].views_pct).toBeNull();
     });
 
     it.each([{ feedData: [] }, { feedData: [{}, {}] }, { feedData: {} }, {}, { feedData: [null] }]) (

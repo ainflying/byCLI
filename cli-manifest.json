@@ -30292,7 +30292,7 @@
   {
     "site": "weixin-channels",
     "name": "post-detail",
-    "description": "读取单条视频号作品的概览、趋势、来源和留存，默认最近 7 天；建议使用 --format json",
+    "description": "读取单条视频号作品的概览、趋势、来源占比、逐日来源明细和留存，默认最近 7 天；建议使用 --format json",
     "access": "read",
     "domain": "channels.weixin.qq.com",
     "strategy": "cookie",
@@ -30334,6 +30334,7 @@
       "overview",
       "trend",
       "sources",
+      "data_details",
       "retention"
     ],
     "type": "js",
@@ -30401,7 +30402,7 @@
   {
     "site": "weixin-channels",
     "name": "sources",
-    "description": "按视频号后台返回的来源统计账号指标，默认最近 7 天，截至昨日",
+    "description": "按视频号后台来源汇总账号指标及播放占比，默认最近 7 天，截至昨日",
     "access": "read",
     "domain": "channels.weixin.qq.com",
     "strategy": "cookie",
@@ -30432,6 +30433,7 @@
     "columns": [
       "source",
       "views",
+      "views_pct",
       "recommendations",
       "likes",
       "comments",
