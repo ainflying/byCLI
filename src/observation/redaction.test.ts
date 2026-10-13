@@ -110,4 +110,54 @@ describe('observation redaction', () => {
     expect(redactText('request failed: fingerprint : "fp-secret"'))
       .toBe('request failed: fingerprint=[REDACTED]');
   });
+
+  it('redacts Channels session credentials in nested objects without matching similar business fields', () => {
+    expect(redactValue({
+      requestBody: {
+        rawKeyBuff: 'raw-secret',
+        pluginSessionId: 'session-secret',
+        nested: { RAW_KEY_BUFF: 'raw-snake-secret', plugin_session_id: 'session-snake-secret' },
+        rawKeyBuffLength: 24,
+        drawKeyBuff: 'visible',
+        pluginSessionCount: 2,
+      },
+    })).toEqual({
+      requestBody: {
+        rawKeyBuff: '[REDACTED]',
+        pluginSessionId: '[REDACTED]',
+        nested: { RAW_KEY_BUFF: '[REDACTED]', plugin_session_id: '[REDACTED]' },
+        rawKeyBuffLength: 24,
+        drawKeyBuff: 'visible',
+        pluginSessionCount: 2,
+      },
+    });
+  });
+
+  it('redacts Channels credentials in JSON request body previews retained by observation traces', () => {
+    expect(redactValue({
+      requestBody: '{"req":{"rawKeyBuff":"raw-secret","pluginSessionId":"session-secret","RAW_KEY_BUFF":"raw-snake-secret","PLUGIN_SESSION_ID":"session-snake-secret","rawKeyBuffLength":24,"pluginSessionCount":2}}',
+    })).toEqual({
+      requestBody: '{"req":{"rawKeyBuff":"[REDACTED]","pluginSessionId":"[REDACTED]","RAW_KEY_BUFF":"[REDACTED]","PLUGIN_SESSION_ID":"[REDACTED]","rawKeyBuffLength":24,"pluginSessionCount":2}}',
+    });
+  });
+
+  it('redacts Channels credentials in diagnostic assignments without matching similar names', () => {
+    expect(redactText('request failed: rawKeyBuff = raw-secret; pluginSessionId : "session-secret"; RAW_KEY_BUFF=raw-snake-secret; PLUGIN_SESSION_ID=session-snake-secret; drawKeyBuff=visible; rawKeyBuffLength=24; pluginSessionCount=2'))
+      .toBe('request failed: rawKeyBuff=[REDACTED]; pluginSessionId=[REDACTED]; RAW_KEY_BUFF=[REDACTED]; PLUGIN_SESSION_ID=[REDACTED]; drawKeyBuff=visible; rawKeyBuffLength=24; pluginSessionCount=2');
+  });
+
+  it('redacts Channels credentials in URL query parameters while preserving unrelated parameters', () => {
+    expect(redactUrl('https://channels.weixin.qq.com/api?rawKeyBuff=raw%2Bsecret&pluginSessionId=session-secret&RAW_KEY_BUFF=raw-snake-secret&PLUGIN_SESSION_ID=session-snake-secret&rawKeyBuffLength=24&pluginSessionCount=2'))
+      .toBe('https://channels.weixin.qq.com/api?rawKeyBuff=[REDACTED]&pluginSessionId=[REDACTED]&RAW_KEY_BUFF=[REDACTED]&PLUGIN_SESSION_ID=[REDACTED]&rawKeyBuffLength=24&pluginSessionCount=2');
+  });
+
+  it('redacts Channels credentials in encoded query assignments in observation text', () => {
+    expect(redactValue({
+      requestBody: 'payload%3Dvalue%26rawKeyBuff%3Draw-secret%26pluginSessionId%3Dsession-secret%26lang%3Dzh_CN',
+      escapedBody: 'payload=value\\u0026raw_key_buff=raw-snake-secret\\u0026PLUGIN_SESSION_ID=session-snake-secret\\u0026lang=zh_CN',
+    })).toEqual({
+      requestBody: 'payload%3Dvalue%26rawKeyBuff%3D[REDACTED]%26pluginSessionId%3D[REDACTED]%26lang%3Dzh_CN',
+      escapedBody: 'payload=value\\u0026raw_key_buff=[REDACTED]\\u0026PLUGIN_SESSION_ID=[REDACTED]\\u0026lang=zh_CN',
+    });
+  });
 });

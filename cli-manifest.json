@@ -30244,6 +30244,251 @@
     "navigateBefore": false
   },
   {
+    "site": "weixin-channels",
+    "name": "overview",
+    "description": "读取视频号账号概览：所选日期内播放、推荐、喜欢、评论、分享和新增关注，默认昨日",
+    "access": "read",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "days",
+        "type": "int",
+        "required": false,
+        "valueRequired": true,
+        "help": "截至上海昨日的天数（默认 1）；不可与自定义日期同时使用"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "开始日期 YYYY-MM-DD（包含），须同时提供 --end-date"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "结束日期 YYYY-MM-DD（包含），最晚为上海昨日"
+      }
+    ],
+    "columns": [
+      "start_date",
+      "end_date",
+      "views",
+      "recommendations",
+      "likes",
+      "comments",
+      "shares",
+      "follows"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/overview.js",
+    "sourceFile": "weixin-channels/overview.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "weixin-channels",
+    "name": "post-detail",
+    "description": "读取单条视频号作品的概览、趋势、来源和留存，默认最近 7 天；建议使用 --format json",
+    "access": "read",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "posts 返回的作品 ID（objectId），按数字字符串原样传入"
+      },
+      {
+        "name": "days",
+        "type": "int",
+        "required": false,
+        "valueRequired": true,
+        "help": "截至上海昨日的统计天数（默认 7）；不可与自定义日期同时使用"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "统计开始日期 YYYY-MM-DD（包含），须同时提供 --end-date"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "统计结束日期 YYYY-MM-DD（包含），最晚为上海昨日"
+      }
+    ],
+    "columns": [
+      "id",
+      "start_date",
+      "end_date",
+      "overview",
+      "trend",
+      "sources",
+      "retention"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/post-detail.js",
+    "sourceFile": "weixin-channels/post-detail.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "weixin-channels",
+    "name": "posts",
+    "description": "列出所选发布时间内的视频号作品及后台累计指标，默认最近 30 天，最多 20 条",
+    "access": "read",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "days",
+        "type": "int",
+        "required": false,
+        "valueRequired": true,
+        "help": "截至上海昨日的发布时间天数（默认 30）；不可与自定义日期同时使用"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "作品发布时间起始日期 YYYY-MM-DD（包含），须同时提供 --end-date"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "作品发布时间结束日期 YYYY-MM-DD（包含），最晚为上海昨日"
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "valueRequired": true,
+        "help": "最多返回的作品数（1–1000 的整数，默认 20）"
+      }
+    ],
+    "columns": [
+      "id",
+      "title",
+      "published_at",
+      "views",
+      "recommendations",
+      "likes",
+      "comments",
+      "shares",
+      "follows",
+      "completion_rate",
+      "avg_play_seconds"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/posts.js",
+    "sourceFile": "weixin-channels/posts.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "weixin-channels",
+    "name": "sources",
+    "description": "按视频号后台返回的来源统计账号指标，默认最近 7 天，截至昨日",
+    "access": "read",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "days",
+        "type": "int",
+        "required": false,
+        "valueRequired": true,
+        "help": "截至上海昨日的天数（默认 7）；不可与自定义日期同时使用"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "开始日期 YYYY-MM-DD（包含），须同时提供 --end-date"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "结束日期 YYYY-MM-DD（包含），最晚为上海昨日"
+      }
+    ],
+    "columns": [
+      "source",
+      "views",
+      "recommendations",
+      "likes",
+      "comments",
+      "shares",
+      "follows"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/sources.js",
+    "sourceFile": "weixin-channels/sources.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "weixin-channels",
+    "name": "trend",
+    "description": "读取视频号账号逐日指标趋势，默认最近 7 天，截至昨日",
+    "access": "read",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "days",
+        "type": "int",
+        "required": false,
+        "valueRequired": true,
+        "help": "截至上海昨日的天数（默认 7）；不可与自定义日期同时使用"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "开始日期 YYYY-MM-DD（包含），须同时提供 --end-date"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "结束日期 YYYY-MM-DD（包含），最晚为上海昨日"
+      }
+    ],
+    "columns": [
+      "date",
+      "views",
+      "recommendations",
+      "likes",
+      "comments",
+      "shares",
+      "follows"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/trend.js",
+    "sourceFile": "weixin-channels/trend.js",
+    "navigateBefore": false
+  },
+  {
     "site": "weread",
     "name": "ai-outline",
     "description": "Get AI-generated outline for a book",
