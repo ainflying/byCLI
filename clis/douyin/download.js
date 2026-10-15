@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { cli, Strategy } from '@sovovs/bycli/registry';
 import { ArgumentError, CliError } from '@sovovs/bycli/errors';
 import { downloadMedia } from '@sovovs/bycli/download/media-download';
-import { sanitizeFilename } from '@sovovs/bycli/download';
+import { planDownloadArtifacts, safeMetadata } from './_shared/download-artifacts.js';
 import { getDouyinWork, listDouyinUserWorks } from './_shared/public-content.js';
 
 function validateTarget(value, user = false) {
@@ -18,21 +18,6 @@ function validateTarget(value, user = false) {
     } catch {
         throw new ArgumentError('Expected a Douyin work ID, Douyin URL/share text, or a creator ID with --user');
     }
-}
-
-function safeMetadata(work) {
-    // Explicit fields keep raw API state, request headers and browser secrets out of files.
-    const author = work.author || {};
-    const statistics = Object.fromEntries(Object.entries(work.statistics || {})
-        .filter(([key, value]) => /^(digg|comment|collect|share|play|download)_count$/.test(key)
-            && (value === null || typeof value === 'number')));
-    const url = /^\d+$/.test(String(work.aweme_id)) ? `https://www.douyin.com/${work.media_type === 'image' ? 'note' : 'video'}/${work.aweme_id}` : undefined;
-    return {
-        aweme_id: String(work.aweme_id), url, title: work.title ?? '', media_type: work.media_type,
-        author: { uid: author.uid, sec_uid: author.sec_uid, nickname: author.nickname },
-        create_time: work.create_time ?? null, duration: work.duration ?? null, statistics,
-        image_count: Array.isArray(work.images) ? work.images.length : 0,
-    };
 }
 
 function failedRow(awemeId, type, message) {
@@ -58,15 +43,8 @@ function matchImageExtension(filePath) {
 }
 
 async function saveWork(work, output, options) {
-    const id = String(work.aweme_id ?? '');
-    const stem = sanitizeFilename(id) || 'unknown';
-    const images = Array.isArray(work.images) ? work.images : [];
-    const media = work.media_type === 'image' || (images.length && !work.play_url)
-        ? images.map((image, index) => ({ type: 'image', url: typeof image === 'string' ? image : image.url || image.urls?.[0], filename: `${stem}_${index + 1}.jpg` }))
-        : [{ type: 'video', url: work.play_url || work.play_urls?.[0], filename: `${stem}.mp4` }];
+    const { id, stem, media, artifacts } = planDownloadArtifacts(work, options);
     const rows = [];
-    const artifacts = [...media.map(item => ({ ...item, artifactType: item.type }))];
-    if (options.cover) artifacts.push({ type: 'image', artifactType: 'cover', url: work.cover_url, filename: `${stem}_cover.jpg` });
     if (!media.length) rows.push(failedRow(id, 'image', 'No media found'));
     for (const artifact of artifacts) {
         if (!artifact.url) {
@@ -120,6 +98,8 @@ export const command = cli({
     columns: ['index', 'aweme_id', 'type', 'status', 'path', 'bytes', 'size', 'has_more', 'cursor', 'next_cursor', 'truncated', 'sample_limit'],
     func: async (page, kwargs) => {
         if (kwargs.batch && (kwargs.target || kwargs.user)) throw new ArgumentError('--batch cannot be combined with a target or --user');
+        const limit = Number(kwargs.limit ?? 20);
+        if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new ArgumentError('--limit must be an integer between 1 and 100');
         const output = path.resolve(String(kwargs.output || './douyin-downloads'));
         let targets;
         if (kwargs.batch) {
@@ -135,8 +115,6 @@ export const command = cli({
         const rows = [];
         let pagination = {};
         if (kwargs.user) {
-            const numericLimit = Number(kwargs.limit ?? 20);
-            const limit = Number.isFinite(numericLimit) ? Math.max(1, Math.min(100, Math.round(numericLimit))) : 20;
             const listed = await listDouyinUserWorks(page, targets[0], { limit, cursor: kwargs.cursor });
             pagination = { has_more: listed.has_more ?? null, cursor: listed.cursor ?? listed.next_cursor ?? null, next_cursor: listed.cursor ?? listed.next_cursor ?? null, truncated: listed.truncated ?? null, sample_limit: limit };
             for (const work of listed.items.slice(0, limit)) rows.push(...await saveWork(work, output, kwargs));

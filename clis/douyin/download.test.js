@@ -32,6 +32,7 @@ function work(id = '7581234567890123456', overrides = {}) {
 }
 beforeEach(async () => {
   resolver.get.mockReset(); resolver.list.mockReset();
+  page.cookies.mockClear();
   output = fs.mkdtempSync(path.join(os.tmpdir(), 'douyin-download-')); dirs.push(output); requests = [];
   const server = http.createServer((req, res) => {
     requests.push({ path: req.url, cookie: req.headers.cookie, referer: req.headers.referer });
@@ -115,6 +116,30 @@ describe('douyin download', () => {
     expect(rows.every(row => row.has_more === true && row.next_cursor === '123' && row.cursor === '123' && row.truncated === true && row.sample_limit === 2)).toBe(true);
     expect(resolver.list).toHaveBeenCalledWith(page, 'MS4w-test', { limit: 2, cursor: '0' });
   });
+  it.each([[undefined, 20], [1, 1], [100, 100]])('accepts creator sample limit %s and uses %s', async (limit, expectedLimit) => {
+    resolver.list.mockResolvedValue({ items: [work('1')], has_more: false });
+    const rows = await command.func(page, { target: 'MS4w-test', user: true, limit, output });
+    expect(rows[0]).toMatchObject({ aweme_id: '1', status: 'success', sample_limit: expectedLimit });
+    expect(resolver.list).toHaveBeenCalledWith(page, 'MS4w-test', { limit: expectedLimit, cursor: undefined });
+  });
+  it.each([0, -1, 101, 1.5, NaN, Infinity, 'not-a-number'])('rejects invalid creator limit %s before any resolution, download or file write', async limit => {
+    resolver.list.mockResolvedValue({ items: [work('1')], has_more: false });
+    await expect(command.func(page, { target: 'MS4w-test', user: true, limit, output, metadata: true }))
+      .rejects.toMatchObject({ code: 'ARGUMENT', message: expect.stringMatching(/limit/i) });
+    expect(resolver.list).not.toHaveBeenCalled();
+    expect(resolver.get).not.toHaveBeenCalled();
+    expect(page.cookies).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
+    expect(fs.readdirSync(output)).toEqual([]);
+  });
+  it('rejects an invalid limit before reading a batch file', async () => {
+    await expect(command.func(page, { batch: path.join(output, 'missing.txt'), limit: 101, output }))
+      .rejects.toMatchObject({ code: 'ARGUMENT', message: expect.stringMatching(/limit/i) });
+    expect(resolver.list).not.toHaveBeenCalled();
+    expect(resolver.get).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
+    expect(fs.readdirSync(output)).toEqual([]);
+  });
   it.each(['https://evil.example/video/1', 'https://www.douyin.com.evil.example/video/1', 'file:///tmp/a'])('rejects an invalid target host: %s', async target => {
     await expect(command.func(page, { target, output })).rejects.toMatchObject({ code: 'ARGUMENT' });
     expect(requests).toEqual([]);
@@ -136,6 +161,14 @@ describe('douyin download', () => {
     const rows = await command.func(page, { target: '1', output, metadata: true });
     expect(rows.every(row => path.relative(output, row.path).split(path.sep).length === 1)).toBe(true);
     expect(rows.every(row => fs.statSync(row.path).size === row.bytes)).toBe(true);
+  });
+  it.each(['', null, undefined, ' /\\:*?<>|"\0 '])('rejects resolved ID %s when its filename stem is empty before downloading or saving metadata', async id => {
+    resolver.get.mockResolvedValue(work('1', { aweme_id: id }));
+    await expect(command.func(page, { target: '1', output, cover: true, metadata: true }))
+      .rejects.toMatchObject({ code: 'ARGUMENT' });
+    expect(page.cookies).not.toHaveBeenCalled();
+    expect(requests).toEqual([]);
+    expect(fs.readdirSync(output)).toEqual([]);
   });
   it.each(['/empty', '/html', '/fail'])('fails the command when all primary media fail: %s', async suffix => {
     resolver.get.mockResolvedValue(work('1', { play_url: base + suffix, play_urls: [base + suffix] }));
