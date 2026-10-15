@@ -22,7 +22,7 @@ describe('douyin user-videos', () => {
         expect(command).toBeDefined();
     });
     it('clamps limit to a safe maximum', () => {
-        expect(normalizeUserVideosLimit(100)).toBe(MAX_USER_VIDEOS_LIMIT);
+        expect(normalizeUserVideosLimit(1000)).toBe(MAX_USER_VIDEOS_LIMIT);
         expect(normalizeUserVideosLimit(0)).toBe(1);
         expect(normalizeCommentLimit(99)).toBe(DEFAULT_COMMENT_LIMIT);
     });
@@ -49,7 +49,7 @@ describe('douyin user-videos', () => {
         };
         const rows = await command.func(page, {
             sec_uid: 'MS4w-test',
-            limit: 100,
+            limit: 1000,
             comment_limit: 99,
             with_comments: true,
         });
@@ -147,5 +147,17 @@ describe('douyin user-videos', () => {
             with_comments: true,
             comment_limit: 5,
         })).rejects.toBeInstanceOf(CommandExecutionError);
+    });
+});
+
+describe('user-videos pagination compatibility', () => {
+    it('allows a bounded multi-page request above twenty and emits resumable metadata', async () => {
+        const command = [...getRegistry().values()].find(cmd => cmd.site === 'douyin' && cmd.name === 'user-videos');
+        const works = [{ aweme_id: '123', desc: 'x', video: { duration: 1000 }, statistics: {} }];
+        Object.defineProperty(works, 'pagination', { value: { cursor: '10', has_more: true, truncated: true } });
+        fetchDouyinUserVideosMock.mockResolvedValueOnce(works);
+        const rows = await command.func({ goto: vi.fn(), wait: vi.fn() }, { sec_uid: 'MS4w-user', limit: 50, cursor: '5', with_comments: false });
+        expect(fetchDouyinUserVideosMock).toHaveBeenLastCalledWith(expect.anything(), 'MS4w-user', 50, { cursor: '5' });
+        expect(rows[0]).toMatchObject({ aweme_id: '123', cursor: '10', has_more: true, truncated: true, top_comments: [] });
     });
 });

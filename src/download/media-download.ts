@@ -38,6 +38,10 @@ export interface MediaDownloadOptions {
   subdir?: string;
   /** Cookie string for HTTP downloads */
   cookies?: string;
+  /** Extra HTTP headers, e.g. Referer. */
+  headers?: Record<string, string>;
+  /** Reject empty or document responses before saving. */
+  validateMedia?: boolean;
   /** Raw browser cookies — auto-exported to Netscape for yt-dlp, auto-cleaned up */
   browserCookies?: BrowserCookie[];
   /** Timeout in ms (default: 30000 for images, 60000 for videos) */
@@ -55,6 +59,9 @@ export interface MediaDownloadResult {
   type: string;
   status: string;
   size: string;
+  /** Absolute path of a successfully saved artifact. */
+  path?: string;
+  bytes?: number;
 }
 
 // ============================================================
@@ -79,6 +86,8 @@ export async function downloadMedia(
     output,
     subdir,
     cookies,
+    headers,
+    validateMedia,
     browserCookies,
     timeout,
     filenamePrefix = 'download',
@@ -116,7 +125,7 @@ export async function downloadMedia(
       const isVideo = media.type !== 'image';
       const ext = isVideo ? 'mp4' : 'jpg';
       const filename = resolveMediaFilename(media.filename, filenamePrefix, i + 1, ext);
-      const destPath = path.join(outputDir, filename);
+      const destPath = path.resolve(outputDir, filename);
 
       const progressBar = tracker.onFileStart(filename, i);
 
@@ -137,6 +146,8 @@ export async function downloadMedia(
           const dlTimeout = timeout || (isVideo ? 60000 : 30000);
           result = await httpDownload(media.url, destPath, {
             cookies,
+            headers,
+            validateMedia,
             timeout: dlTimeout,
             onProgress: (received, total) => {
               if (progressBar) progressBar.update(received, total);
@@ -154,6 +165,7 @@ export async function downloadMedia(
           type: media.type === 'video-tweet' || media.type === 'video-ytdlp' ? 'video' : media.type,
           status: result.success ? 'success' : 'failed',
           size: result.success ? formatBytes(result.size) : (result.error || 'unknown error'),
+          ...(result.success && fs.existsSync(destPath) ? { path: destPath, bytes: result.size } : {}),
         });
       } catch (err) {
         const msg = getErrorMessage(err);

@@ -38,6 +38,48 @@ describe('douyin publish upload identifier handling', () => {
     });
   });
 
+
+  async function runPublish(overrides = {}) {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'douyin-publish-mode-'));
+    try {
+      const video = path.join(tmpDir, 'video.mp4');
+      fs.writeFileSync(video, 'test-video');
+      const { getRegistry } = await import('@sovovs/bycli/registry');
+      await import('./publish.js');
+      return await getRegistry().get('douyin/publish').func({}, {
+        video, title: 'test', caption: '', visibility: 'private', no_safety_check: true, ...overrides,
+      });
+    } finally { fs.rmSync(tmpDir, { recursive: true, force: true }); }
+  }
+
+  it('requires exactly one explicit immediate or scheduled mode before upload', async () => {
+    await expect(runPublish()).rejects.toThrow(/--now.*--schedule/);
+    await expect(runPublish({ now: true, schedule: new Date(Date.now() + 10800000).toISOString() })).rejects.toThrow(/--now.*--schedule/);
+    expect(mocks.getUploadAuthV5Credentials).not.toHaveBeenCalled();
+  });
+
+  it('publishes immediate mode with timing zero and reports submission without claiming approval', async () => {
+    const rows = await runPublish({ now: true });
+    const request = mocks.browserFetch.mock.calls.find(call => String(call[2]).includes('/aweme/create_v2/'));
+    expect(request[3].body.item.common.timing).toBe(0);
+    expect(rows[0]).toMatchObject({ status: '已提交发布，等待平台处理', aweme_id: 'aweme-1', publish_time: null });
+  });
+
+  it('retains scheduled limits and renders scheduled time as ISO with client timezone context', async () => {
+    await expect(runPublish({ schedule: new Date(Date.now() + 3600000).toISOString() })).rejects.toThrow('2 小时');
+    await expect(runPublish({ schedule: new Date(Date.now() + 15 * 86400000).toISOString() })).rejects.toThrow('14 天');
+    const schedule = Math.floor((Date.now() + 10800000) / 1000);
+    const rows = await runPublish({ schedule: String(schedule) });
+    expect(rows[0].publish_time).toBe(new Date(schedule * 1000).toISOString());
+    expect(rows[0].timezone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    expect(rows[0].status).toBe('已提交定时发布，等待平台处理');
+  });
+
+  it('does not treat a response without an identifier as successful', async () => {
+    mocks.browserFetch.mockResolvedValue({ status_code: 0 });
+    await expect(runPublish({ now: true })).rejects.toThrow(/无法确认发布结果/);
+  });
+
   it('uses CommitUploadInner Vid for create_v2, not the completed TOS object key', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'douyin-publish-id-'));
     const video = path.join(tmpDir, 'video.mp4');

@@ -9302,6 +9302,54 @@
   },
   {
     "site": "douyin",
+    "name": "account",
+    "description": "读取当前登录账号的喜欢、收藏、关注或粉丝（有界分页）",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "action",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "账号列表类型",
+        "choices": [
+          "likes",
+          "favorites",
+          "following",
+          "followers"
+        ]
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "返回上限（最大 200）"
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "required": false,
+        "help": "上次结果中的不透明分页 cursor"
+      }
+    ],
+    "columns": [
+      "items",
+      "cursor",
+      "has_more",
+      "truncated",
+      "limitation"
+    ],
+    "type": "js",
+    "modulePath": "douyin/account.js",
+    "sourceFile": "douyin/account.js",
+    "navigateBefore": "https://www.douyin.com"
+  },
+  {
+    "site": "douyin",
     "name": "activities",
     "description": "官方活动列表",
     "access": "read",
@@ -9348,6 +9396,149 @@
   },
   {
     "site": "douyin",
+    "name": "comment",
+    "description": "显式提交一条评论或回复；仅在接口确认评论 ID 后返回 submitted",
+    "access": "write",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "作品 ID、链接或分享文本"
+      },
+      {
+        "name": "text",
+        "type": "string",
+        "required": true,
+        "help": "评论内容（1–300 字符）"
+      },
+      {
+        "name": "reply-to",
+        "type": "string",
+        "required": false,
+        "help": "回复的评论 ID"
+      }
+    ],
+    "columns": [
+      "status",
+      "aweme_id",
+      "comment_id",
+      "text",
+      "reply_to"
+    ],
+    "type": "js",
+    "modulePath": "douyin/comment.js",
+    "sourceFile": "douyin/comment.js",
+    "navigateBefore": "https://www.douyin.com"
+  },
+  {
+    "site": "douyin",
+    "name": "comments",
+    "description": "获取抖音作品评论和有界评论回复",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "作品 ID、链接或分享文本"
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "评论数量（最大 200）"
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "required": false,
+        "help": "继续上次返回的 cursor"
+      },
+      {
+        "name": "replies",
+        "type": "int",
+        "default": 0,
+        "required": false,
+        "help": "每条评论的回复数量（最大 50，0 为不获取）"
+      },
+      {
+        "name": "comment_id",
+        "type": "string",
+        "required": false,
+        "help": "仅列出该评论的回复"
+      }
+    ],
+    "columns": [
+      "comment_id",
+      "parent_comment_id",
+      "reply_to_comment_id",
+      "text",
+      "author",
+      "digg_count",
+      "reply_count",
+      "replies",
+      "cursor",
+      "has_more",
+      "truncated"
+    ],
+    "type": "js",
+    "modulePath": "douyin/comments.js",
+    "sourceFile": "douyin/comments.js",
+    "navigateBefore": "https://www.douyin.com"
+  },
+  {
+    "site": "douyin",
+    "name": "creator-profile",
+    "description": "基于有界公开作品样本分析创作者，不推断受众属性或账号全量数据",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "用户 sec_uid 或主页链接"
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "作品样本上限（最大 200）"
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "required": false,
+        "help": "作品分页 cursor"
+      }
+    ],
+    "columns": [
+      "authors",
+      "sample",
+      "analysis",
+      "limitations"
+    ],
+    "type": "js",
+    "modulePath": "douyin/creator-profile.js",
+    "sourceFile": "douyin/creator-profile.js",
+    "navigateBefore": "https://www.douyin.com"
+  },
+  {
+    "site": "douyin",
     "name": "delete",
     "description": "删除作品（优先使用创作者后台作品管理；找不到时回退到旧删除接口）",
     "access": "write",
@@ -9371,6 +9562,122 @@
     "sourceFile": "douyin/delete.js",
     "navigateBefore": "https://creator.douyin.com",
     "siteSession": "persistent"
+  },
+  {
+    "site": "douyin",
+    "name": "detail",
+    "description": "获取抖音视频或图文作品详情和媒体地址",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "作品 ID、链接或分享文本"
+      }
+    ],
+    "columns": [
+      "aweme_id",
+      "title",
+      "media_type",
+      "author",
+      "statistics",
+      "duration",
+      "play_url",
+      "images",
+      "url"
+    ],
+    "type": "js",
+    "modulePath": "douyin/detail.js",
+    "sourceFile": "douyin/detail.js",
+    "navigateBefore": "https://www.douyin.com"
+  },
+  {
+    "site": "douyin",
+    "name": "download",
+    "description": "下载抖音视频或图集，支持批量文件和创作者作品样本",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "string",
+        "required": false,
+        "positional": true,
+        "help": "作品 ID、链接、分享文本；--user 模式下为用户 ID 或主页链接"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": "./douyin-downloads",
+        "required": false,
+        "help": "输出目录"
+      },
+      {
+        "name": "cover",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "同时下载封面"
+      },
+      {
+        "name": "metadata",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "保存作品元数据 JSON"
+      },
+      {
+        "name": "batch",
+        "type": "string",
+        "required": false,
+        "help": "每行一个作品目标的文本文件（支持 # 注释）"
+      },
+      {
+        "name": "user",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "下载创作者的有限作品样本"
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "创作者样本数量（最大 100）"
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "required": false,
+        "help": "创作者作品分页游标"
+      }
+    ],
+    "columns": [
+      "index",
+      "aweme_id",
+      "type",
+      "status",
+      "path",
+      "bytes",
+      "size",
+      "has_more",
+      "cursor",
+      "next_cursor",
+      "truncated",
+      "sample_limit"
+    ],
+    "type": "js",
+    "modulePath": "douyin/download.js",
+    "sourceFile": "douyin/download.js",
+    "navigateBefore": false
   },
   {
     "site": "douyin",
@@ -9428,6 +9735,63 @@
     "type": "js",
     "modulePath": "douyin/draft.js",
     "sourceFile": "douyin/draft.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "douyin",
+    "name": "draft-images",
+    "description": "通过创作中心上传本地图片并保存图文草稿",
+    "access": "write",
+    "domain": "creator.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "images",
+        "type": "str",
+        "required": true,
+        "help": "本地 JPEG/PNG/WebP 图片路径，多张用逗号分隔"
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": true,
+        "help": "图文标题（≤30字）"
+      },
+      {
+        "name": "caption",
+        "type": "str",
+        "default": "",
+        "required": false,
+        "help": "正文（含话题总计≤1000字）"
+      },
+      {
+        "name": "topics",
+        "type": "str",
+        "default": "",
+        "required": false,
+        "help": "话题名称，逗号分隔，自动添加 # 前缀"
+      },
+      {
+        "name": "visibility",
+        "type": "str",
+        "default": "public",
+        "required": false,
+        "help": "",
+        "choices": [
+          "public",
+          "friends",
+          "private"
+        ]
+      }
+    ],
+    "columns": [
+      "status",
+      "draft_id"
+    ],
+    "type": "js",
+    "modulePath": "douyin/draft-images.js",
+    "sourceFile": "douyin/draft-images.js",
     "navigateBefore": false
   },
   {
@@ -9512,6 +9876,37 @@
   },
   {
     "site": "douyin",
+    "name": "insights",
+    "description": "离线分析 JSON/JSONL 作品或 read 证据包，披露样本与启发式公式",
+    "access": "read",
+    "strategy": "public",
+    "browser": false,
+    "args": [
+      {
+        "name": "input",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "JSON/JSONL 文件；- 从 stdin 读取（最大 8 MiB）"
+      }
+    ],
+    "columns": [
+      "sample",
+      "method",
+      "metrics",
+      "creators",
+      "topics",
+      "repeated_titles",
+      "repeated_questions",
+      "ranking",
+      "limitations"
+    ],
+    "type": "js",
+    "modulePath": "douyin/insights.js",
+    "sourceFile": "douyin/insights.js"
+  },
+  {
+    "site": "douyin",
     "name": "location",
     "description": "地理位置 POI 搜索",
     "access": "read",
@@ -9569,7 +9964,7 @@
   {
     "site": "douyin",
     "name": "publish",
-    "description": "定时发布视频到抖音（必须设置 2h ~ 14天后的发布时间）",
+    "description": "发布视频到抖音（--now 或 --schedule 二选一）",
     "access": "write",
     "domain": "creator.douyin.com",
     "strategy": "cookie",
@@ -9589,9 +9984,16 @@
         "help": "视频标题（≤30字）"
       },
       {
+        "name": "now",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "立即提交发布（与 schedule 互斥）"
+      },
+      {
         "name": "schedule",
         "type": "str",
-        "required": true,
+        "required": false,
         "help": "定时发布时间（ISO8601 或 Unix 秒，2h ~ 14天后）"
       },
       {
@@ -9681,12 +10083,192 @@
       "status",
       "aweme_id",
       "url",
-      "publish_time"
+      "publish_time",
+      "timezone"
     ],
     "type": "js",
     "modulePath": "douyin/publish.js",
     "sourceFile": "douyin/publish.js",
     "navigateBefore": "https://creator.douyin.com"
+  },
+  {
+    "site": "douyin",
+    "name": "publish-images",
+    "description": "通过创作中心立即提交图文发布（必须指定 --now）",
+    "access": "write",
+    "domain": "creator.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "images",
+        "type": "str",
+        "required": true,
+        "help": "本地 JPEG/PNG/WebP 图片路径，多张用逗号分隔"
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": true,
+        "help": "图文标题（≤30字）"
+      },
+      {
+        "name": "caption",
+        "type": "str",
+        "default": "",
+        "required": false,
+        "help": "正文（含话题总计≤1000字）"
+      },
+      {
+        "name": "topics",
+        "type": "str",
+        "default": "",
+        "required": false,
+        "help": "话题名称，逗号分隔，自动添加 # 前缀"
+      },
+      {
+        "name": "visibility",
+        "type": "str",
+        "default": "public",
+        "required": false,
+        "help": "",
+        "choices": [
+          "public",
+          "friends",
+          "private"
+        ]
+      },
+      {
+        "name": "now",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "确认立即提交图文发布"
+      }
+    ],
+    "columns": [
+      "status",
+      "aweme_id",
+      "url"
+    ],
+    "type": "js",
+    "modulePath": "douyin/publish-images.js",
+    "sourceFile": "douyin/publish-images.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "douyin",
+    "name": "read",
+    "description": "读取作品、评论与可用官方字幕的结构化证据包；不生成虚构转录",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "作品 ID、链接或分享文本"
+      },
+      {
+        "name": "comments",
+        "type": "int",
+        "default": 0,
+        "required": false,
+        "help": "评论样本数量（0 不读取，最大 200）"
+      },
+      {
+        "name": "replies",
+        "type": "int",
+        "default": 0,
+        "required": false,
+        "help": "每条评论的回复上限（最大 50）"
+      }
+    ],
+    "columns": [
+      "work",
+      "comments",
+      "subtitles",
+      "analysis",
+      "limitations"
+    ],
+    "type": "js",
+    "modulePath": "douyin/read.js",
+    "sourceFile": "douyin/read.js",
+    "navigateBefore": "https://www.douyin.com"
+  },
+  {
+    "site": "douyin",
+    "name": "search",
+    "description": "搜索抖音作品（原生浏览器会话，支持排序和时间筛选）",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "query",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "搜索词"
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 20,
+        "required": false,
+        "help": "获取数量（最大 200）"
+      },
+      {
+        "name": "sort",
+        "type": "string",
+        "default": "general",
+        "required": false,
+        "help": "综合、最多点赞或最新",
+        "choices": [
+          "general",
+          "likes",
+          "latest"
+        ]
+      },
+      {
+        "name": "time",
+        "type": "string",
+        "default": "all",
+        "required": false,
+        "help": "发布时间范围",
+        "choices": [
+          "all",
+          "day",
+          "week",
+          "halfyear"
+        ]
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "required": false,
+        "help": "继续上次返回的 cursor"
+      }
+    ],
+    "columns": [
+      "aweme_id",
+      "title",
+      "media_type",
+      "author",
+      "statistics",
+      "url",
+      "cursor",
+      "has_more",
+      "truncated"
+    ],
+    "type": "js",
+    "modulePath": "douyin/search.js",
+    "sourceFile": "douyin/search.js",
+    "navigateBefore": "https://www.douyin.com"
   },
   {
     "site": "douyin",
@@ -9755,6 +10337,40 @@
   },
   {
     "site": "douyin",
+    "name": "user",
+    "description": "读取抖音用户公开资料（缺失统计保留 null）",
+    "access": "read",
+    "domain": "www.douyin.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "用户 sec_uid、主页链接或分享文本"
+      }
+    ],
+    "columns": [
+      "sec_uid",
+      "uid",
+      "nickname",
+      "unique_id",
+      "signature",
+      "follower_count",
+      "following_count",
+      "aweme_count",
+      "total_favorited",
+      "url"
+    ],
+    "type": "js",
+    "modulePath": "douyin/user.js",
+    "sourceFile": "douyin/user.js",
+    "navigateBefore": "https://www.douyin.com"
+  },
+  {
+    "site": "douyin",
     "name": "user-videos",
     "description": "获取指定用户的视频列表（含下载地址和热门评论）",
     "access": "read",
@@ -9774,7 +10390,13 @@
         "type": "int",
         "default": 20,
         "required": false,
-        "help": "获取数量（最大 20）"
+        "help": "获取数量（最大 200，自动分页）"
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "required": false,
+        "help": "从上次返回的 cursor 继续"
       },
       {
         "name": "with_comments",
@@ -9798,7 +10420,10 @@
       "duration",
       "digg_count",
       "play_url",
-      "top_comments"
+      "top_comments",
+      "cursor",
+      "has_more",
+      "truncated"
     ],
     "type": "js",
     "modulePath": "douyin/user-videos.js",

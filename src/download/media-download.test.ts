@@ -34,6 +34,41 @@ async function startServer(handler: http.RequestListener): Promise<string> {
 // Windows runners occasionally exceed the default 5s timeout on the first
 // http.createServer + downloadMedia roundtrip (cold-start cost on a loaded VM).
 describe('media downloads', { retry: process.platform === 'win32' ? 2 : 0 }, () => {
+  it('passes request headers and reports the saved absolute path and exact bytes', async () => {
+    let referer;
+    const baseUrl = await startServer((req, res) => {
+      referer = req.headers.referer;
+      res.setHeader('Content-Type', 'video/mp4');
+      res.end(Buffer.from([0, 0, 0, 20, 102, 116, 121, 112]));
+    });
+    const output = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bycli-media-'));
+    tempDirs.push(output);
+    const [result] = await downloadMedia([{ type: 'video', url: baseUrl, filename: '../safe.mp4' }], {
+      output, headers: { Referer: 'https://www.douyin.com/' }, validateMedia: true, verbose: false,
+    });
+    expect(referer).toBe('https://www.douyin.com/');
+    expect(result).toMatchObject({ status: 'success', path: path.join(output, 'safe.mp4'), bytes: 8 });
+    expect(fs.statSync(result.path!).size).toBe(8);
+  });
+
+  it.each(['empty', 'html', 'disguised-html'])('rejects %s media and preserves an existing destination', async (kind) => {
+    const baseUrl = await startServer((_req, res) => {
+      res.setHeader('Content-Type', kind === 'html' ? 'text/html' : 'application/octet-stream');
+      res.end(kind === 'empty' ? '' : '<!doctype html><html>verification required</html>');
+    });
+    const output = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bycli-media-'));
+    tempDirs.push(output);
+    const dest = path.join(output, 'saved.mp4');
+    fs.writeFileSync(dest, 'previous valid file');
+    const [result] = await downloadMedia([{ type: 'video', url: baseUrl, filename: 'saved.mp4' }], {
+      output, validateMedia: true, verbose: false,
+    });
+    expect(result.status).toBe('failed');
+    expect(result.path).toBeUndefined();
+    expect(fs.readFileSync(dest, 'utf8')).toBe('previous valid file');
+    expect(fs.existsSync(dest + '.tmp')).toBe(false);
+  });
+
   it('keeps custom filenames inside the output directory', async () => {
     const baseUrl = await startServer((_req, res) => {
       res.statusCode = 200;
@@ -50,7 +85,7 @@ describe('media downloads', { retry: process.platform === 'win32' ? 2 : 0 }, () 
       verbose: false,
     });
 
-    expect(results).toEqual([
+    expect(results).toMatchObject([
       { index: 1, type: 'image', status: 'success', size: '5.0 B' },
     ]);
     expect(fs.readFileSync(path.join(outputDir, 'escape.jpg'), 'utf8')).toBe('image');
@@ -76,7 +111,7 @@ describe('media downloads', { retry: process.platform === 'win32' ? 2 : 0 }, () 
       verbose: false,
     });
 
-    expect(results).toEqual([
+    expect(results).toMatchObject([
       { index: 1, type: 'image', status: 'success', size: '5.0 B' },
       { index: 2, type: 'image', status: 'success', size: '5.0 B' },
       { index: 3, type: 'image', status: 'success', size: '5.0 B' },
@@ -109,7 +144,7 @@ describe('media downloads', { retry: process.platform === 'win32' ? 2 : 0 }, () 
       verbose: false,
     });
 
-    expect(results).toEqual([
+    expect(results).toMatchObject([
       { index: 1, type: 'image', status: 'success', size: '5.0 B' },
       { index: 2, type: 'image', status: 'success', size: '5.0 B' },
       { index: 3, type: 'image', status: 'success', size: '5.0 B' },

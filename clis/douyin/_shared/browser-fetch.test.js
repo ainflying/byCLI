@@ -1,3 +1,4 @@
+import vm from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthRequiredError, CommandExecutionError } from '@sovovs/bycli/errors';
 import { browserFetch } from './browser-fetch.js';
@@ -60,5 +61,23 @@ describe('browserFetch', () => {
         const page = makePage(null);
         page.evaluate.mockRejectedValueOnce(new SyntaxError('Unexpected token < in JSON'));
         await expect(browserFetch(page, 'GET', 'https://creator.douyin.com/api/test')).rejects.toThrow('Douyin API request failed (GET https://creator.douyin.com/api/test): Unexpected token < in JSON');
+    });
+});
+
+describe('browserFetch transport failures', () => {
+    function transportPage(status, text) {
+        return { evaluate: async js => vm.runInNewContext(js, {
+            AbortController, setTimeout, clearTimeout,
+            fetch: async () => ({ ok: status >= 200 && status < 300, status, text: async () => text }),
+        }) };
+    }
+    it('rejects HTTP authentication failures even when their JSON status_code is zero', async () => {
+        await expect(browserFetch(transportPage(403, '{"status_code":0}'), 'GET', 'https://www.douyin.com/api/test')).rejects.toBeInstanceOf(AuthRequiredError);
+    });
+    it('does not expose response bodies or sensitive request query parameters in errors', async () => {
+        const error = await browserFetch(transportPage(500, '<html>private-cookie-value</html>'), 'GET', 'https://www.douyin.com/api/test?msToken=secret-value').catch(e => e);
+        expect(error).toBeInstanceOf(CommandExecutionError);
+        expect(error.message).not.toContain('private-cookie-value');
+        expect(error.message).not.toContain('secret-value');
     });
 });

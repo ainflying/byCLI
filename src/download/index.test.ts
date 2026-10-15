@@ -116,6 +116,22 @@ describe('download helpers', { retry: process.platform === 'win32' ? 2 : 0 }, ()
     expect(fs.readFileSync(destPath, 'utf8')).toBe('ok');
   });
 
+  it('keeps legacy document downloads while media validation rejects the same response', async () => {
+    const baseUrl = await startServer((_req, res) => {
+      res.setHeader('Content-Type', 'text/html');
+      res.end('<html>document</html>');
+    });
+    const tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'bycli-dl-'));
+    tempDirs.push(tempDir);
+    const legacyPath = path.join(tempDir, 'page.html');
+    const mediaPath = path.join(tempDir, 'video.mp4');
+    expect(await httpDownload(baseUrl, legacyPath)).toMatchObject({ success: true, size: 21 });
+    expect(fs.readFileSync(legacyPath, 'utf8')).toBe('<html>document</html>');
+    expect(await httpDownload(baseUrl, mediaPath, { validateMedia: true })).toMatchObject({ success: false, size: 0 });
+    expect(fs.existsSync(mediaPath)).toBe(false);
+    expect(fs.existsSync(mediaPath + '.tmp')).toBe(false);
+  });
+
   it('bypasses proxy settings for loopback downloads', async () => {
     vi.stubEnv('HTTP_PROXY', 'http://127.0.0.1:9');
 

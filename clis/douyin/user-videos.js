@@ -1,7 +1,7 @@
 import { cli, Strategy } from '@sovovs/bycli/registry';
 import { CliError, CommandExecutionError, EmptyResultError } from '@sovovs/bycli/errors';
 import { fetchDouyinComments, fetchDouyinUserVideos } from './_shared/public-api.js';
-export const MAX_USER_VIDEOS_LIMIT = 20;
+export const MAX_USER_VIDEOS_LIMIT = 200;
 export const USER_VIDEO_COMMENT_CONCURRENCY = 4;
 export const DEFAULT_COMMENT_LIMIT = 10;
 export function normalizeUserVideosLimit(limit) {
@@ -44,19 +44,21 @@ cli({
     strategy: Strategy.COOKIE,
     args: [
         { name: 'sec_uid', type: 'string', required: true, positional: true, help: '用户 sec_uid（URL 末尾部分）' },
-        { name: 'limit', type: 'int', default: 20, help: '获取数量（最大 20）' },
+        { name: 'limit', type: 'int', default: 20, help: '获取数量（最大 200，自动分页）' },
+        { name: 'cursor', type: 'string', help: '从上次返回的 cursor 继续' },
         { name: 'with_comments', type: 'bool', default: true, help: '包含热门评论（默认: true）' },
         { name: 'comment_limit', type: 'int', default: 10, help: '每个视频获取多少条评论（最大 10）' },
     ],
-    columns: ['index', 'aweme_id', 'title', 'duration', 'digg_count', 'play_url', 'top_comments'],
+    columns: ['index', 'aweme_id', 'title', 'duration', 'digg_count', 'play_url', 'top_comments', 'cursor', 'has_more', 'truncated'],
     func: async (page, kwargs) => {
         const secUid = kwargs.sec_uid;
         const limit = normalizeUserVideosLimit(kwargs.limit);
         const withComments = kwargs.with_comments !== false;
         const commentLimit = normalizeCommentLimit(kwargs.comment_limit);
-        await page.goto(`https://www.douyin.com/user/${secUid}`);
-        await page.wait(3);
-        const awemeList = (await fetchDouyinUserVideos(page, secUid, limit)).slice(0, limit);
+        const fetched = kwargs.cursor == null
+            ? await fetchDouyinUserVideos(page, secUid, limit)
+            : await fetchDouyinUserVideos(page, secUid, limit, { cursor: kwargs.cursor });
+        const awemeList = fetched.slice(0, limit);
         if (awemeList.length === 0) {
             throw new EmptyResultError('douyin user-videos', `No videos were returned for sec_uid ${secUid}. Confirm the user exists and the Douyin session is valid.`);
         }
@@ -73,9 +75,10 @@ cli({
                 aweme_id: video.aweme_id,
                 title: video.desc ?? '',
                 duration: Math.round((video.video?.duration ?? 0) / 1000),
-                digg_count: video.statistics?.digg_count ?? 0,
+                digg_count: video.statistics?.digg_count ?? null,
                 play_url: playUrl,
                 top_comments: video.top_comments ?? [],
+                ...(fetched.pagination ?? {}),
             };
         });
     },

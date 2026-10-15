@@ -25,6 +25,8 @@ export interface DownloadOptions {
   timeout?: number;
   onProgress?: (received: number, total: number) => void;
   maxRedirects?: number;
+  /** Reject empty or document responses before replacing the destination. Opt-in for media callers. */
+  validateMedia?: boolean;
 }
 
 export interface YtdlpOptions {
@@ -150,9 +152,13 @@ export async function httpDownload(
 
     const totalSize = parseInt(response.headers.get('content-length') || '0', 10);
     let received = 0;
+    let prefix = Buffer.alloc(0);
     const progressStream = new Transform({
       transform(chunk, _encoding, callback) {
         received += chunk.length;
+        if (options.validateMedia && prefix.length < 512) {
+          prefix = Buffer.concat([prefix, Buffer.from(chunk).subarray(0, 512 - prefix.length)]);
+        }
         if (onProgress) onProgress(received, totalSize);
         callback(null, chunk);
       },
@@ -165,6 +171,15 @@ export async function httpDownload(
         progressStream,
         fs.createWriteStream(tempPath),
       );
+      if (options.validateMedia) {
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        const textPrefix = prefix.toString('utf8').trimStart();
+        if (received === 0) throw new Error('Empty media response');
+        if (/^(text\/|application\/(json|xml|xhtml))/.test(contentType)
+            || /^(?:<!doctype\s+html|<html|<head|<body|<script|<\?xml|\{|\[)/i.test(textPrefix)) {
+          throw new Error('Expected media but received a document response');
+        }
+      }
       await fs.promises.rename(tempPath, destPath);
       return { success: true, size: received };
     } catch (err) {
