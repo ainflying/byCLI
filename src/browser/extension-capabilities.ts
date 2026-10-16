@@ -1,5 +1,6 @@
 export const FOCUS_WINDOW_CAPABILITY = 'focus-window-v1';
 export const IMA_READER_CAPABILITY = 'ima-reader-v1';
+export const CONSOLE_CAPTURE_CAPABILITY = 'console-capture-v1';
 export const EXTENSION_CAPABILITY_MISSING_ERROR_CODE = 'extension_capability_missing';
 export const EXTENSION_CAPABILITY_MISSING_HTTP_STATUS = 412;
 
@@ -17,6 +18,7 @@ export function normalizeExtensionCapabilities(value: unknown): string[] {
 }
 
 export function requiredExtensionCapability(command: { action?: unknown; op?: unknown }): string | undefined {
+  if (command.action === 'console-messages') return CONSOLE_CAPTURE_CAPABILITY;
   if (command.action === 'tabs' && command.op === 'focus') return FOCUS_WINDOW_CAPABILITY;
   return typeof command.action === 'string' && IMA_READER_ACTIONS.has(command.action)
     ? IMA_READER_CAPABILITY
@@ -32,6 +34,9 @@ export function missingRequiredExtensionCapability(
 }
 
 export function extensionCapabilityHint(capability: string): string {
+  if (capability === CONSOLE_CAPTURE_CAPABILITY) {
+    return 'Update and reload the byCLI Browser Bridge extension with console capture support, then retry.';
+  }
   if (capability === FOCUS_WINDOW_CAPABILITY) {
     return 'Update and reload the byCLI Browser Bridge extension, then retry the login flow.';
   }

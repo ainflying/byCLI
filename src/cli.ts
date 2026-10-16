@@ -38,6 +38,7 @@ import { aliasForContextId, loadProfileConfig, renameProfile, resolveProfileCont
 import { formatDaemonVersion, isDaemonStale } from './browser/daemon-version.js';
 import type { BrowserDownloadWaitResult, IPage, ScreenshotOptions } from './types.js';
 import type { BrowserWindowMode } from './runtime.js';
+import { redactValue } from './observation/redaction.js';
 
 const CLI_FILE = fileURLToPath(import.meta.url);
 const BROWSER_TAB_OPTION_DESCRIPTION = 'Target tab/page identity returned by "browser open", "browser tab new", or "browser tab list"';
@@ -1101,17 +1102,25 @@ Examples:
         });
 
       if (opts.follow) {
-        let lastSeenTs = 0;
+        let seenIds = new Set<string>();
         while (true) {
           const messages = filter(normalize(await page.consoleMessages('all')));
-          const next = selectFreshByTimestamp(messages, lastSeenTs);
-          for (const message of next.fresh) {
-            console.log(JSON.stringify({
+          const occurrences = new Map<string, number>();
+          const currentIds = new Set<string>();
+          for (const message of messages) {
+            // IDs distinguish real repeats within one millisecond. The fallback supports older IPage implementations.
+            const key = JSON.stringify([message.timestamp, message.type, message.text]);
+            const occurrence = (occurrences.get(key) ?? 0) + 1;
+            occurrences.set(key, occurrence);
+            const id = typeof message.id === 'string' ? message.id : `${key}:${occurrence}`;
+            currentIds.add(id);
+            if (seenIds.has(id)) continue;
+            console.log(JSON.stringify(redactValue({
               ...message,
               timestamp: toIsoTimestamp(message.timestamp),
-            }));
+            })));
           }
-          lastSeenTs = next.lastSeenTs;
+          seenIds = currentIds;
           await new Promise((resolve) => setTimeout(resolve, FOLLOW_POLL_MS));
         }
       }
@@ -1121,7 +1130,7 @@ Examples:
         session: getPageSession(page),
         captured_at: new Date().toISOString(),
         count: messages.length,
-        messages: messages.map((message) => ({
+        messages: messages.map((message) => redactValue({
           ...message,
           timestamp: toIsoTimestamp(message.timestamp),
         })),

@@ -27,7 +27,8 @@ function generateId(): string {
 
 export interface DaemonCommand {
   id: string;
-  action: 'exec' | 'navigate' | 'tabs' | 'cookies' | 'screenshot' | 'close-window' | 'set-file-input' | 'insert-text' | 'bind' | 'network-capture-start' | 'network-capture-read' | 'ima-auth-start' | 'ima-auth-read' | 'ima-reader-request' | 'ima-media-request' | 'ima-auth-release' | 'wait-download' | 'cdp' | 'frames';
+  action: 'exec' | 'navigate' | 'tabs' | 'cookies' | 'screenshot' | 'close-window' | 'set-file-input' | 'insert-text' | 'bind' | 'network-capture-start' | 'network-capture-read' | 'console-messages' | 'ima-auth-start' | 'ima-auth-read' | 'ima-reader-request' | 'ima-media-request' | 'ima-auth-release' | 'wait-download' | 'cdp' | 'frames';
+  level?: string;
   /** Target page identity (targetId). Cross-layer contract with the extension. */
   page?: string;
   code?: string;
