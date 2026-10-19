@@ -1,3 +1,4 @@
+import { USER_CONFIRMED_ARG } from '../_shared/publish-confirmation.js';
 import { cli, Strategy } from '@sovovs/bycli/registry';
 import { ArgumentError } from '@sovovs/bycli/errors';
 import { prepareAnswer, manageDraft, validateWrite, PUBLISH_COLUMNS } from './_shared/publisher.js';
@@ -15,6 +16,7 @@ cli({
         { name: 'operation', required: true, help: '持久操作记录，同一回答始终复用' },
         { name: 'mode', default: 'prepare', choices: ['prepare', 'reopen', 'submit'], help: '默认仅准备草稿；submit 才公开提交' },
         { name: 'timeout', type: 'int', default: 120, help: '每步等待秒数，回答草稿阶段最多120' },
+        USER_CONFIRMED_ARG,
         { name: 'execute', type: 'boolean', help: '明确执行当前阶段' },
     ], columns: PUBLISH_COLUMNS,
     func: (page, args) => (args.mode ?? 'prepare') === 'prepare' ? prepareAnswer(page, args) : manageDraft(page, args, 'answer'),

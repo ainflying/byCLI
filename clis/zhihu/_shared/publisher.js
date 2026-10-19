@@ -1,3 +1,4 @@
+import { requirePublishConfirmation } from '../../_shared/publish-confirmation.js';
 import { ArgumentError, AuthRequiredError, CommandExecutionError, TimeoutError } from '@sovovs/bycli/errors';
 import { answerDraftCommand } from '../answer-waiting-draft.js';
 import { inspectDraftPage, draftScript, resolveDraftOptions, normalizeDraftText } from '../draft-shared.js';
@@ -17,6 +18,7 @@ export function operationResult(op) {
         verified: op.verified ?? false, message: op.message ?? '' }];
 }
 export function validateWrite(args, preparing = false) {
+  requirePublishConfirmation(args);
     if (args.execute !== true && args.execute !== 'true') throw new ArgumentError('Use --execute for this write action');
     if (typeof args.operation !== 'string' || !args.operation) throw new ArgumentError('--operation is required; always reuse the same journal for the same work');
     if (!Number.isInteger(args.timeout ?? 120) || (args.timeout ?? 120) < 1 || (args.timeout ?? 120) > 1800) throw new ArgumentError('--timeout must be 1–1800 seconds');
@@ -296,6 +298,7 @@ export async function manageDraft(page, args, kind) {
         if (capture) await page.readNetworkCapture?.();
         if (kind === 'video' && !capture) throw new CommandExecutionError('Native publish receipt capture is required for video type/identity');
         // Durable uncertainty is recorded before the irreversible click. Never retry.
+        op.user_confirmed_at = new Date().toISOString();
         op.submitted = true; op.status = 'submit_unknown'; op.verified = false;
         op.message = 'Submission may have happened; status reconciliation is required'; await saveOperation(file, op);
         await page.click(s.selector);

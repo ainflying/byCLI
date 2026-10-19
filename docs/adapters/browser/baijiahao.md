@@ -1,5 +1,7 @@
 # Baijiahao（百家号）
 
+发布前必须先保存、重开核对平台草稿，向用户展示具体内容并获得明确确认；然后单独调用 `--mode submit --execute --user-confirmed`。准备阶段不得预先传入确认参数。详见[三平台发布确认流程](../../guide/publishing-confirmation.md)。
+
 **Mode**: 🔐 Browser · **Domain**: `baijiahao.baidu.com`
 
 先在 Chrome 登录百家号并连接 [Browser Bridge](/guide/browser-bridge)。发布通过网页原生控件完成；统计通过当前账号的只读接口读取。图文和文章在后台均为 `news`，共用驱动。
@@ -27,7 +29,7 @@ bycli baijiahao video-publish --operation ./operations/video.json \
   --ai-generated yes --execute --timeout 300
 
 # prepared 后，显式提交一次。
-bycli baijiahao video-publish --operation ./operations/video.json --mode submit --execute
+bycli baijiahao video-publish --operation ./operations/video.json --mode submit --user-confirmed --execute
 # 只读取同一作品的远端状态，不重新点发布。
 bycli baijiahao video-publish --operation ./operations/video.json --mode status -f json
 
@@ -36,7 +38,7 @@ bycli baijiahao image-text-publish --operation ./operations/news.json \
   --title '文章标题' --file /absolute/path/body.txt \
   --images '["/absolute/path/one.png","/absolute/path/two.png"]' \
   --cover /absolute/path/cover.png --ai-generated yes --execute
-bycli baijiahao image-text-publish --operation ./operations/news.json --mode submit --execute
+bycli baijiahao image-text-publish --operation ./operations/news.json --mode submit --user-confirmed --execute
 bycli baijiahao article-publish --operation ./operations/news.json --mode status -f json
 ```
 

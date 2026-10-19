@@ -1,3 +1,4 @@
+import { requirePublishConfirmation } from '../../_shared/publish-confirmation.js';
 import { ArgumentError, AuthRequiredError, CommandExecutionError, TimeoutError, EmptyResultError } from '@sovovs/bycli/errors';
 import { open, readFile, rename, unlink, writeFile, stat } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
@@ -7,11 +8,13 @@ import { publishScript, previewFingerprintDOM } from './publish-dom.js';
 import { fetchPosts, fetchPostDetail } from './client.js';
 import { normalizePost, normalizeDetail, resolveDateRange } from './model.js';
 import { fetchManagementPost } from './management.js';
+import { savedDraftId, openSavedDraft } from './draft.js';
 
 const CREATE_URL = 'https://channels.weixin.qq.com/platform/post/create';
 export const PUBLISH_COLUMNS = ['operation_id', 'status', 'submitted', 'id', 'management_id', 'metrics_source', 'editor_url', 'public_url', 'description', 'ai_generated', 'message', 'metrics', 'analytics', 'editor'];
 
 export function validatePublishArgs(args) {
+  requirePublishConfirmation(args);
   if (!args.execute) throw new ArgumentError('Use --execute to prepare or submit a video');
   if (!args.operation || typeof args.operation !== 'string') throw new ArgumentError('--operation must be a local journal path');
   if (!['prepare', 'adopt-draft', 'retry-upload', 'recover', 'resume', 'submit'].includes(args.mode ?? 'prepare')) throw new ArgumentError('--mode must be prepare, adopt-draft, retry-upload, recover, resume or submit');
@@ -50,7 +53,8 @@ function result(op, editor = null) {
   return [{ operation_id: op.operation_id, status: op.status, submitted: op.submitted, id: op.id ?? null,
     management_id: op.management_id ?? null, metrics_source: op.metrics_source ?? null,
     editor_url: op.editor_url ?? CREATE_URL, public_url: null, description: op.description, ai_generated: op.ai_generated,
-    message: op.message ?? '', metrics: op.metrics ?? null, analytics: op.analytics ?? null, editor }];
+    message: op.message ?? '', metrics: op.metrics ?? null, analytics: op.analytics ?? null,
+    editor: editor ?? (op.source_draft_id ? { draft_id: op.source_draft_id, verified_at: op.draft_verified_at ?? null } : null) }];
 }
 async function inspect(page, action, op) {
   const s = await page.evaluate(publishScript(action, op.operation_id, op.ai_generated));
@@ -64,6 +68,51 @@ async function locked(file, fn) {
   catch (e) { throw new CommandExecutionError(e.code === 'EEXIST' ? 'Operation is already running; do not repeat submission' : 'Cannot create operation lock'); }
   try { return await fn(); }
   finally { await lock.close(); await unlink(`${file}.lock`); }
+}
+
+async function verifySavedDraft(page, file, op, timeout) {
+  await openSavedDraft(page, op, timeout);
+  const deadline = Date.now() + timeout * 1000;
+  while (Date.now() < deadline) {
+    const s = await page.evaluate(publishScript('bind', op.operation_id, op.ai_generated));
+    if (s?.error === 'editor_loading' || s?.error === 'wrong_editor_path') { await page.wait(0.5); continue; }
+    if (!s || s.error || s.blocked) throw new CommandExecutionError('Saved draft editor requires inspection');
+    if (s.draft_id !== op.source_draft_id || s.description !== op.description) {
+      throw new CommandExecutionError('Reopened saved draft identity or content changed');
+    }
+    if (s.ready) {
+      if (!s.ai_selected) {
+        const control = await inspect(page, 'ai', op);
+        if (control.selector) await page.click(control.selector);
+        await page.wait(0.25); continue;
+      }
+      op.target = page.getActivePage?.(); op.editor_url = s.url;
+      op.status = s.can_submit ? 'prepared' : 'draft_saved';
+      op.draft_verified_at = new Date().toISOString();
+      op.message = s.can_submit ? 'Platform draft saved, found by exact ID and reopened; await user confirmation before separate submit'
+        : 'Platform draft saved and reopened; wait for cover or other editor requirements before user-confirmed submission';
+      await save(file, op); return result(op);
+    }
+    await page.wait(0.5);
+  }
+  throw new TimeoutError('Reopened platform draft verification', timeout);
+}
+
+async function persistDraft(page, file, op, timeout) {
+  if (op.draft_save_attempted) throw new CommandExecutionError('Draft save was already attempted; inspect the draft box, do not repeat saving automatically');
+  const state = await inspect(page, 'save-draft', op);
+  if (state.operation_id !== op.operation_id || state.description !== op.description || !state.ai_selected || !state.selector) {
+    throw new CommandExecutionError('Unique native draft save control or prepared content unavailable');
+  }
+  if (!await page.startNetworkCapture('/post_draft')) throw new CommandExecutionError('Native draft receipt capture is required');
+  await page.readNetworkCapture();
+  const started = Date.now();
+  op.draft_save_attempted = true; op.status = 'draft_save_unknown';
+  op.message = 'Native draft save attempted; inspect exact receipt before continuing, never save again automatically';
+  await save(file, op); await page.focusWindow?.(); await page.click(state.selector);
+  op.source_draft_id = await savedDraftId(page, started, timeout);
+  op.status = 'draft_saved'; await save(file, op);
+  return verifySavedDraft(page, file, op, timeout);
 }
 
 export async function publishVideo(page, args) {
@@ -91,10 +140,16 @@ export async function publishVideo(page, args) {
       if (!state.can_submit) throw new CommandExecutionError('Saved draft AI label or publish control is not ready; refusing adoption');
       await inspect(page, 'bind', pending);
       pending.editor_url = state.url;
+      pending.draft_verified_at = new Date().toISOString();
       pending.message = 'Exact existing platform draft verified and retained; no upload, content change or submission';
       await save(file, pending); return result(pending);
     }
     if (mode === 'prepare' || mode === 'retry-upload' || mode === 'recover' || mode === 'resume') {
+      if (op?.draft_save_attempted || op?.source_draft_id) {
+        if (mode !== 'resume' || op.submitted) return result({ ...op, message: 'Existing platform draft retained; use resume to recheck it, never upload or save again' });
+        if (!op.source_draft_id) throw new CommandExecutionError('Draft save receipt unknown; inspect draft box and adopt its exact ID explicitly; do not save again');
+        return verifySavedDraft(page, file, op, args.timeout ?? 180);
+      }
       let state;
       if (mode === 'recover') {
         if (!op || op.submitted || !['preparing', 'preparation_unknown'].includes(op.status)) throw new CommandExecutionError('Only an unsubmitted interrupted preparation can be recovered');
@@ -180,9 +235,8 @@ export async function publishVideo(page, args) {
           await save(file, op);
         }
         else if (filled && !state.ai_selected && state.selector) await page.click(state.selector);
-        if (filled && state.can_submit && state.description === op.description && state.ai_selected) {
-          op.status = 'prepared'; op.message = 'Video ready in retained tab; not saved as a platform draft and not submitted';
-          await save(file, op); return result(op);
+        if (filled && state.ready && state.description === op.description && state.ai_selected) {
+          return persistDraft(page, file, op, args.timeout ?? 180);
         }
         await page.wait(0.5);
       }
@@ -194,7 +248,7 @@ export async function publishVideo(page, args) {
     }
     if (!op) throw new ArgumentError('Prepare an operation before submitting');
     if (op.submitted || op.status === 'published') return result({ ...op, message: 'Submission already attempted; reconcile status, never click publish again' });
-    if (op.status !== 'prepared') throw new CommandExecutionError('Operation is not prepared; inspect its retained tab');
+    if (op.status !== 'prepared' || !op.source_draft_id) throw new CommandExecutionError('A saved and verified platform draft is required; preview-only legacy operations cannot be submitted');
     if (!op.target || typeof page.setActivePage !== 'function') throw new CommandExecutionError('Retained page identity unavailable');
     page.setActivePage(op.target);
     const state = await inspect(page, 'submit', op);
@@ -205,6 +259,7 @@ export async function publishVideo(page, args) {
     if (state.blocked || !state.selector) throw new CommandExecutionError('Publish requires user action or an unambiguous enabled button');
     // Persist before the irreversible click. Crashes and ambiguous receipts cannot trigger a retry.
     op.status = 'submit_unknown'; op.submitted = true;
+    op.user_confirmed_at = new Date().toISOString();
     op.submitted_at = new Date().toISOString();
     op.message = 'Submission may have happened; reconcile before any further action';
     await save(file, op);

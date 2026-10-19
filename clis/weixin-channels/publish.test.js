@@ -26,22 +26,36 @@ function browser(block = '') {
   const root = dom.window.document.querySelector('wujie-app').attachShadow({ mode: 'open' });
   root.innerHTML = `<input type="file" accept="video/*" hidden><video></video><div contenteditable="true"></div>
     <div><span>视频标注</span></div><div><div class="selected">选择视频标注</div><div class="options" hidden><div>含AI生成内容</div><div>无需标注</div></div></div>
-    <button>发表</button><div class="result"></div><div>${block}</div>`;
+    <button>发表</button><button id="save-draft">保存草稿</button><div class="result"></div><div>${block}</div>`;
   const selected = root.querySelector('.selected'), options = root.querySelector('.options');
   // JSDOM does not invalidate style caches for mutations in shadow roots.
   const render = () => dom.window.document.body.setAttribute('data-render', String(Math.random()));
   selected.addEventListener('click', () => { options.hidden = false; render(); });
   for (const option of options.children) option.addEventListener('click', () => { selected.textContent = option.textContent; options.hidden = true; render(); });
-  let clicks = 0, uploads = 0;
+  let clicks = 0, uploads = 0, saves = 0, target = 'retained-page';
+  root.querySelector('#save-draft').addEventListener('click', () => {
+    saves++;
+    const draftId = 'export/saved_fixture';
+    const wrap = dom.window.document.createElement('div'); wrap.className = 'post-edit-wrap';
+    wrap.__vue__ = { $props: { postStore: { defaultValue: { objectId: draftId }, tempPost: { objectId: draftId } } } }; root.append(wrap);
+    const card = dom.window.document.createElement('div'); card.className = 'post-draft-item';
+    card.__vue__ = { $props: { post: { objectId: draftId, desc: { description: root.querySelector('[contenteditable]').innerText } } } };
+    const edit = dom.window.document.createElement('span'); edit.className = 'icon-edit';
+    edit.addEventListener('click', () => dom.reconfigure({ url: 'https://channels.weixin.qq.com/platform/post/create' }));
+    card.append(edit); root.append(card);
+  });
+  dom.window.performance.getEntriesByType = () => saves ? [{ name: 'https://channels.weixin.qq.com/micro/content/cgi-bin/mmfinderassistant-bin/post/post_draft', startTime: Date.now() - dom.window.performance.timeOrigin, responseEnd: 1 }] : [];
   root.querySelector('button').addEventListener('click', () => { clicks++; root.querySelector('.result').textContent = '发表成功'; });
   const page = {
-    goto: vi.fn(async () => {}), getActivePage: () => 'retained-page', setActivePage: vi.fn(),
+    goto: vi.fn(async url => dom.reconfigure({ url })), getActivePage: () => target, setActivePage: vi.fn(value => { target = value; }),
     evaluate: async js => dom.window.eval(js), wait: async () => {},
+    startNetworkCapture: async () => true,
+    readNetworkCapture: async () => saves ? [{ url: 'https://channels.weixin.qq.com/micro/content/cgi-bin/mmfinderassistant-bin/post/post_draft', method: 'POST', responseStatus: 201, timestamp: Date.now(), responsePreview: JSON.stringify({ errCode: 0, data: { objectId: 'export/saved_fixture' } }) }] : [],
     uploadFiles: async () => { uploads++; Object.defineProperties(root.querySelector('video'), { readyState: { value: 1 }, duration: { value: 3 } }); },
     fillText: async (sel, text) => { root.querySelector(sel).innerText = text; return { filled: true, verified: true }; },
     click: async sel => { root.querySelector(sel).click(); },
   };
-  return { page, root, clicks: () => clicks, uploads: () => uploads };
+  return { page, root, clicks: () => clicks, uploads: () => uploads, saves: () => saves };
 }
 async function args() {
   const file = join(dir, 'video.mp4'); await writeFile(file, 'local video fixture');
@@ -63,6 +77,40 @@ function managementBrowser(records) {
 }
 
 describe('video publishing lifecycle', () => {
+  it('persists a native draft, reopens its exact card and awaits confirmation without publishing', async () => {
+    const ui = browser(), a = await args();
+    const [row] = await publishVideo(ui.page, a);
+    const op = JSON.parse(await readFile(a.operation, 'utf8'));
+    expect(row).toMatchObject({ status: 'prepared', submitted: false });
+    expect(op).toMatchObject({ source_draft_id: 'export/saved_fixture', draft_save_attempted: true });
+    expect(op.draft_verified_at).toBeTruthy(); expect(op.user_confirmed_at).toBeUndefined();
+    expect(ui.saves()).toBe(1); expect(ui.clicks()).toBe(0);
+    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true })).rejects.toThrow('--user-confirmed');
+    await publishVideo(ui.page, { operation: a.operation, mode: 'resume', execute: true, timeout: 1 });
+    expect(ui.saves()).toBe(1); expect(ui.uploads()).toBe(1); expect(ui.clicks()).toBe(0);
+  });
+  it('retains an unknown save without uploading, saving or publishing again', async () => {
+    const ui = browser(), a = await args(), original = ui.page.click;
+    ui.page.click = async selector => {
+      if (selector.includes('save-draft')) {
+        expect(JSON.parse(await readFile(a.operation, 'utf8'))).toMatchObject({ status: 'draft_save_unknown', submitted: false, draft_save_attempted: true });
+        throw Error('save transport lost');
+      }
+      return original(selector);
+    };
+    await expect(publishVideo(ui.page, a)).rejects.toThrow('save transport lost');
+    ui.page.click = vi.fn();
+    await publishVideo(ui.page, a);
+    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'resume', execute: true })).rejects.toThrow('receipt unknown');
+    expect(ui.page.click).not.toHaveBeenCalled(); expect(ui.uploads()).toBe(1);
+  });
+  it('rejects legacy preview-only operations even when submission is confirmed', async () => {
+    const ui = browser(), a = await args(); await publishVideo(ui.page, a);
+    const op = JSON.parse(await readFile(a.operation, 'utf8')); delete op.source_draft_id;
+    await writeFile(a.operation, JSON.stringify(op));
+    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true, 'user-confirmed': true })).rejects.toThrow('saved and verified platform draft');
+    expect(ui.clicks()).toBe(0);
+  });
   it('adopts an exact existing platform draft without uploading or changing content, then submits once', async () => {
     const ui = browser(), a = await args(), draftId = 'export/precise_draft';
     Object.defineProperties(ui.root.querySelector('video'), { readyState: { value: 4 }, duration: { value: 175 } });
@@ -78,8 +126,8 @@ describe('video publishing lifecycle', () => {
     expect(ui.uploads()).toBe(0); expect(ui.clicks()).toBe(0);
     expect(JSON.parse(await readFile(a.operation, 'utf8')).source_draft_id).toBe(draftId);
     expect((await publishVideo(ui.page, adopt))[0].operation_id).toBe(row.operation_id);
-    await publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true });
-    await publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true });
+    await publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true });
+    await publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true });
     expect(ui.clicks()).toBe(1); expect(ui.uploads()).toBe(0);
   });
   it.each(['identity', 'description', 'cover'])('rejects saved draft adoption with changed %s', async reason => {
@@ -98,7 +146,7 @@ describe('video publishing lifecycle', () => {
   it('recovers an explicitly selected restarted page only after hashing its exact local preview', async () => {
     const ui = browser(), a = await args(); await publishVideo(ui.page, a);
     const op = JSON.parse(await readFile(a.operation, 'utf8'));
-    op.status = 'preparation_unknown'; await writeFile(a.operation, JSON.stringify(op));
+    op.status = 'preparation_unknown'; delete op.source_draft_id; delete op.draft_save_attempted; ui.root.querySelectorAll('.post-edit-wrap,.post-draft-item').forEach(e => e.remove()); await writeFile(a.operation, JSON.stringify(op));
     const win = ui.root.ownerDocument.defaultView, data = await readFile(a.file);
     Object.defineProperty(win.crypto, 'subtle', { value: webcrypto.subtle });
     win.fetch = vi.fn(async () => ({ ok: true, blob: async () => ({ size: data.length, arrayBuffer: async () => data }) }));
@@ -115,7 +163,7 @@ describe('video publishing lifecycle', () => {
   it('rejects a restarted preview with a different hash without rebinding or uploading', async () => {
     const ui = browser(), a = await args(); await publishVideo(ui.page, a);
     const op = JSON.parse(await readFile(a.operation, 'utf8'));
-    op.status = 'preparation_unknown'; await writeFile(a.operation, JSON.stringify(op));
+    op.status = 'preparation_unknown'; delete op.source_draft_id; delete op.draft_save_attempted; ui.root.querySelectorAll('.post-edit-wrap,.post-draft-item').forEach(e => e.remove()); await writeFile(a.operation, JSON.stringify(op));
     const win = ui.root.ownerDocument.defaultView;
     Object.defineProperty(win.crypto, 'subtle', { value: webcrypto.subtle });
     win.fetch = async () => ({ ok: true, blob: async () => ({ size: 3, arrayBuffer: async () => Buffer.from('bad') }) });
@@ -141,10 +189,10 @@ describe('video publishing lifecycle', () => {
     expect((await publishVideo(ui.page, a))[0]).toMatchObject({ status: 'prepared', submitted: false });
     expect(ui.clicks()).toBe(0);
     expect(ui.uploads()).toBe(1);
-    const row = (await publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true }))[0];
+    const row = (await publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true }))[0];
     expect(row).toMatchObject({ status: 'submitted', submitted: true, id: null });
     expect(ui.page.setActivePage).toHaveBeenCalledWith('retained-page');
-    await publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true });
+    await publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true });
     await publishVideo(ui.page, a);
     expect(ui.clicks()).toBe(1); expect(ui.uploads()).toBe(1);
   });
@@ -154,9 +202,9 @@ describe('video publishing lifecycle', () => {
       expect(JSON.parse(await readFile(a.operation, 'utf8'))).toMatchObject({ status: 'submit_unknown', submitted: true });
       throw Error('transport lost');
     };
-    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true })).rejects.toThrow('transport lost');
+    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true })).rejects.toThrow('transport lost');
     ui.page.click = vi.fn();
-    expect((await publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true }))[0].status).toBe('submit_unknown');
+    expect((await publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true }))[0].status).toBe('submit_unknown');
     expect(ui.page.click).not.toHaveBeenCalled();
   });
   it.each(['', 'plaintext-only'])('recognizes a valid contenteditable=%s description editor', async value => {
@@ -168,16 +216,16 @@ describe('video publishing lifecycle', () => {
   it('resumes editing in the retained uploaded page without navigation or another upload', async () => {
     const ui = browser(), a = await args(); await publishVideo(ui.page, a);
     const op = JSON.parse(await readFile(a.operation, 'utf8'));
-    op.status = 'preparation_unknown'; await writeFile(a.operation, JSON.stringify(op));
+    op.status = 'preparation_unknown'; delete op.source_draft_id; delete op.draft_save_attempted; ui.root.querySelectorAll('.post-edit-wrap,.post-draft-item').forEach(e => e.remove()); await writeFile(a.operation, JSON.stringify(op));
     ui.root.querySelector('[contenteditable]').innerText = '';
     ui.page.goto.mockClear();
     expect((await publishVideo(ui.page, { operation: a.operation, mode: 'resume', execute: true }))[0]).toMatchObject({ status: 'prepared', submitted: false });
-    expect(ui.page.goto).not.toHaveBeenCalled(); expect(ui.uploads()).toBe(1); expect(ui.clicks()).toBe(0);
+    expect(ui.page.goto.mock.calls.every(([url]) => url.includes('draftListManager'))).toBe(true); expect(ui.uploads()).toBe(1); expect(ui.clicks()).toBe(0);
   });
   it('retries only an explicitly requested identical upload in the empty original page, preserving operation identity', async () => {
     const ui = browser(), a = await args(); await publishVideo(ui.page, a);
     const op = JSON.parse(await readFile(a.operation, 'utf8'));
-    op.status = 'preparation_unknown'; await writeFile(a.operation, JSON.stringify(op));
+    op.status = 'preparation_unknown'; delete op.source_draft_id; delete op.draft_save_attempted; ui.root.querySelectorAll('.post-edit-wrap,.post-draft-item').forEach(e => e.remove()); await writeFile(a.operation, JSON.stringify(op));
     ui.root.querySelector('video').remove(); ui.root.querySelector('[contenteditable]').innerText = '';
     const video = ui.root.ownerDocument.createElement('video');
     const originalUpload = ui.page.uploadFiles;
@@ -185,14 +233,14 @@ describe('video publishing lifecycle', () => {
     ui.page.goto.mockClear();
     const [row] = await publishVideo(ui.page, { file: a.file, operation: a.operation, mode: 'retry-upload', 'editor-page': 'A4BDE4E421777B2A9B81569BE866DC32', 'editor-session': 'restarted', execute: true, timeout: 1 });
     expect(row).toMatchObject({ operation_id: op.operation_id, description: a.description, status: 'prepared', submitted: false });
-    expect(ui.uploads()).toBe(2); expect(ui.clicks()).toBe(0); expect(ui.page.goto).not.toHaveBeenCalled();
+    expect(ui.uploads()).toBe(2); expect(ui.clicks()).toBe(0); expect(ui.page.goto.mock.calls.every(([url]) => url.includes('draftListManager'))).toBe(true);
     expect(JSON.parse(await readFile(a.operation, 'utf8')).upload_retries).toHaveLength(1);
     expect(JSON.parse(await readFile(a.operation, 'utf8')).editor_session).toBe('restarted');
   });
   it.each(['preview', 'different-file', 'submitted'])('refuses explicit upload retry with %s', async reason => {
     const ui = browser(), a = await args(); await publishVideo(ui.page, a);
     const op = JSON.parse(await readFile(a.operation, 'utf8'));
-    op.status = 'preparation_unknown'; if (reason === 'submitted') op.submitted = true;
+    op.status = 'preparation_unknown'; delete op.source_draft_id; delete op.draft_save_attempted; ui.root.querySelectorAll('.post-edit-wrap,.post-draft-item').forEach(e => e.remove()); if (reason === 'submitted') op.submitted = true;
     await writeFile(a.operation, JSON.stringify(op));
     if (reason !== 'preview') { ui.root.querySelector('video').remove(); ui.root.querySelector('[contenteditable]').innerText = ''; }
     if (reason === 'different-file') await writeFile(a.file, 'changed video');
@@ -224,14 +272,14 @@ describe('video publishing lifecycle', () => {
     if (reason === 'css-disabled') ui.root.querySelector('button').className = 'weui-desktop-btn_disabled';
     if (reason === 'aria-disabled') ui.root.querySelector('button').setAttribute('aria-disabled', 'true');
     if (reason === 'cover-pending') ui.root.querySelector('.result').textContent = '封面生成中，请等待完成后再发表';
-    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true })).rejects.toThrow('unambiguous');
+    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true })).rejects.toThrow('unambiguous');
     expect(ui.clicks()).toBe(0);
     expect(JSON.parse(await readFile(a.operation, 'utf8')).submitted).toBe(false);
   });
   it.each(['binding', 'text', 'preview', 'submitted'])('rejects recovery after changed %s without uploading', async change => {
     const ui = browser(), a = await args(); await publishVideo(ui.page, a);
     const op = JSON.parse(await readFile(a.operation, 'utf8'));
-    op.status = 'preparation_unknown';
+    op.status = 'preparation_unknown'; delete op.source_draft_id; delete op.draft_save_attempted; ui.root.querySelectorAll('.post-edit-wrap,.post-draft-item').forEach(e => e.remove());
     if (change === 'binding') ui.root.ownerDocument.documentElement.removeAttribute('data-bycli-channels-operation');
     if (change === 'text') ui.root.querySelector('[contenteditable]').innerText = 'manual edit';
     if (change === 'preview') ui.root.querySelector('video').remove();
@@ -245,7 +293,7 @@ describe('video publishing lifecycle', () => {
     if (change === 'text') ui.root.querySelector('[contenteditable]').innerText = 'changed';
     if (change === 'binding') ui.root.ownerDocument.documentElement.removeAttribute('data-bycli-channels-operation');
     if (change === 'ambiguous') ui.root.append(ui.root.querySelector('button').cloneNode(true));
-    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true })).rejects.toThrow(/changed|unambiguous/);
+    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', 'user-confirmed': true, execute: true })).rejects.toThrow(/changed|unambiguous/);
     expect(ui.clicks()).toBe(0);
   });
   it('hands visible verification off without uploading or accepting it', async () => {
@@ -258,7 +306,7 @@ describe('video publishing lifecycle', () => {
     await expect(publishVideo(ui.page, { ...a, timeout: 0 })).rejects.toThrow('timeout');
     await writeFile(`${a.operation}.lock`, '');
     await expect(publishVideo(ui.page, a)).rejects.toThrow('already running');
-    expect(ui.page.goto).not.toHaveBeenCalled();
+    expect(ui.page.goto.mock.calls.every(([url]) => url.includes('draftListManager'))).toBe(true);
   });
 });
 
@@ -354,6 +402,6 @@ describe('integration with existing Channels analytics', () => {
     await expect(videoStatus(ui.page, { operation: a.operation, id: managementId })).rejects.toThrow('complete objectId');
     await expect(videoStatus(ui.page, { operation: a.operation, id, 'management-id': managementId })).rejects.toThrow('cannot be combined');
     await expect(videoStatus(ui.page, { operation: a.operation, days: 7, 'management-id': managementId })).rejects.toThrow('cumulative');
-    expect(ui.page.goto).not.toHaveBeenCalled();
+    expect(ui.page.goto.mock.calls.every(([url]) => url.includes('draftListManager'))).toBe(true);
   });
 });

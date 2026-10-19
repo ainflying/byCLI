@@ -1,5 +1,7 @@
 # Zhihu
 
+发布前必须先保存、重开核对平台草稿，向用户展示具体内容并获得明确确认；然后单独调用 `--mode submit --execute --user-confirmed`。准备阶段不得预先传入确认参数。详见[三平台发布确认流程](../../guide/publishing-confirmation.md)。
+
 **Mode**: 🔐 Browser · **Domain**: `zhihu.com`
 
 ## Commands
@@ -21,7 +23,7 @@
 | `bycli zhihu favorite <target> (--collection <name> \| --collection-id <id>) --execute` | Favorite an answer or article into a specific collection |
 | `bycli zhihu comment <target> (<text> \| --file <path>) --execute` | Create a top-level comment when a fresh top-level editor is already present |
 | `bycli zhihu answer-waiting-draft <target> (<text> \| --file <path>) --execute` | Save a new answer draft or an existing answer’s unpublished edit draft |
-| `bycli zhihu answer <target> (<text> \| --file <path>) --execute` | Create a new answer when a fresh answer editor is already present |
+| `bycli zhihu answer <target>` | Direct publication disabled; use `answer-submit` to save a draft, then obtain user confirmation |
 
 ## Target Formats
 
@@ -37,8 +39,6 @@
 - `favorite` only supports existing collections, it does not create new collections
 - `comment` only supports top-level comments
 - `comment` currently requires the page to already expose a fresh top-level comment editor
-- `answer` only supports creating a new non-anonymous plain-text answer
-- `answer` currently requires the page to already expose a fresh answer editor
 - `comment` and `answer` also support `--file <path>` for multi-line payloads
 - Article targets can live on `zhuanlan.zhihu.com`, while question and answer targets stay on `www.zhihu.com`
 
@@ -70,7 +70,7 @@ bycli zhihu like article:998877 --execute
 bycli zhihu favorite article:998877 --collection "默认收藏夹" --execute
 bycli zhihu favorite answer:123456:789012 --collection-id fav-b --execute
 bycli zhihu comment answer:123456:789012 --file ./comment.txt --execute
-bycli zhihu answer question:123456 --file ./answer.txt --execute
+# Direct answer publishing is disabled; use answer-submit to prepare a draft first.
 
 # JSON output
 bycli zhihu hot -f json

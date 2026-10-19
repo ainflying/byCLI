@@ -1,3 +1,4 @@
+import { USER_CONFIRMED_ARG } from '../_shared/publish-confirmation.js';
 import { cli, Strategy } from '@sovovs/bycli/registry';
 import { manageDraft, validateWrite, PUBLISH_COLUMNS } from './_shared/publisher.js';
 cli({
@@ -9,6 +10,7 @@ cli({
         { name: 'operation', required: true, help: 'video-draft 生成的持久操作记录' },
         { name: 'mode', choices: ['reopen', 'submit'], default: 'reopen', help: 'reopen 核对草稿；submit 才公开提交' },
         { name: 'timeout', type: 'int', default: 180, help: '核对等待秒数' },
+        USER_CONFIRMED_ARG,
         { name: 'execute', type: 'boolean', help: '执行当前操作' },
     ], columns: PUBLISH_COLUMNS, func: (page, args) => manageDraft(page, args, 'video'),
 });

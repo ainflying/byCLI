@@ -1,5 +1,7 @@
 # Weixin Channels（微信视频号助手）
 
+发布前必须先保存、重开核对平台草稿，向用户展示具体内容并获得明确确认；然后单独调用 `--mode submit --execute --user-confirmed`。准备阶段不得预先传入确认参数。详见[三平台发布确认流程](../../guide/publishing-confirmation.md)。
+
 **Mode**: 🔐 Browser · **Domain**: `channels.weixin.qq.com`
 
 这组只读命令通过当前视频号助手登录会话查询账号统计和作品数据。先在 Chrome 中打开[视频号助手](https://channels.weixin.qq.com/)并扫码登录目标视频号，确保 byCLI 的 [Browser Bridge](/guide/browser-bridge) 已连接。公众号后台的登录状态不能代替视频号助手登录。

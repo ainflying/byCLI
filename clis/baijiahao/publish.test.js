@@ -60,7 +60,7 @@ describe('Baijiahao durable publishing workflow', () => {
   it('persists attempted submission before clicking and never repeats an ambiguous submit', async () => {
     const b = await setup({ clickError: true });
     try {
-      const args = { operation: b.file, mode: 'submit', execute: true };
+      const args = { operation: b.file, mode: 'submit', 'user-confirmed': true, execute: true };
       await expect(publish(b.page, args, 'video', () => b.page)).rejects.toThrow('lost connection');
       expect((await readOperation(b.file)).submitted).toBe(true);
       await publish(b.page, args, 'video', () => b.page); expect(b.clicks).toHaveLength(1);
@@ -68,7 +68,7 @@ describe('Baijiahao durable publishing workflow', () => {
   });
   it.each([{ accountId: '123' }, { editorTitle: 'changed' }, { remoteTitle: 'changed' }])('fails closed before submit when account or saved content changes: %j', async options => {
     const b = await setup(options);
-    try { await expect(publish(b.page, { operation: b.file, mode: 'submit', execute: true }, 'video', () => b.page)).rejects.toThrow(); expect(b.clicks).toHaveLength(0); } finally { await b.cleanup(); }
+    try { await expect(publish(b.page, { operation: b.file, mode: 'submit', 'user-confirmed': true, execute: true }, 'video', () => b.page)).rejects.toThrow(); expect(b.clicks).toHaveLength(0); } finally { await b.cleanup(); }
   });
   it('reconciles the exact published work without clicking or creating an editor', async () => {
     const b = await setup({ operation: { submitted: true, status: 'verification_required' } });

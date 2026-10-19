@@ -65,6 +65,11 @@ export function inspectPublishPage(action, operationId, expectedAi) {
   if (!blocked && action === 'submit' && canSubmit) {
     selector = mark(enabledPublish[0], 'submit');
   }
+  if (!blocked && action === 'save-draft' && ready && editors.length === 1) {
+    const buttons = elements.filter(x => x.matches('button') && x.textContent.trim() === '保存草稿'
+      && !x.disabled && x.getAttribute('aria-disabled') !== 'true' && !/disabled/.test(x.className));
+    if (buttons.length === 1) selector = mark(buttons[0], 'save-draft');
+  }
   if (action === 'bind') document.documentElement.setAttribute('data-bycli-channels-operation', operationId);
   return {
     url: location.href, operation_id: document.documentElement.getAttribute('data-bycli-channels-operation'), draft_id: draftId,

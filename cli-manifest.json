@@ -2027,7 +2027,7 @@
   {
     "site": "baijiahao",
     "name": "article-publish",
-    "description": "图文/文章准备、上传、保存草稿、重开核对、单次提交和精确状态读取；人工完成验证码",
+    "description": "图文/文章准备、上传、保存草稿、重开核对；上层获得用户确认后 submit --user-confirmed 单次提交；人工完成验证码",
     "access": "write",
     "domain": "baijiahao.baidu.com",
     "strategy": "ui",
@@ -2111,6 +2111,12 @@
         "default": 180,
         "required": false,
         "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
       },
       {
         "name": "execute",
@@ -2191,7 +2197,7 @@
   {
     "site": "baijiahao",
     "name": "image-text-publish",
-    "description": "图文/文章准备、上传、保存草稿、重开核对、单次提交和精确状态读取；人工完成验证码",
+    "description": "图文/文章准备、上传、保存草稿、重开核对；上层获得用户确认后 submit --user-confirmed 单次提交；人工完成验证码",
     "access": "write",
     "domain": "baijiahao.baidu.com",
     "strategy": "ui",
@@ -2275,6 +2281,12 @@
         "default": 180,
         "required": false,
         "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
       },
       {
         "name": "execute",
@@ -2401,7 +2413,7 @@
   {
     "site": "baijiahao",
     "name": "video-publish",
-    "description": "视频准备、上传、保存草稿、重开核对、单次提交和精确状态读取；人工完成验证码",
+    "description": "视频准备、上传、保存草稿、重开核对；上层获得用户确认后 submit --user-confirmed 单次提交；人工完成验证码",
     "access": "write",
     "domain": "baijiahao.baidu.com",
     "strategy": "ui",
@@ -2485,6 +2497,12 @@
         "default": 180,
         "required": false,
         "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
       },
       {
         "name": "execute",
@@ -31656,7 +31674,7 @@
   {
     "site": "weixin-channels",
     "name": "video-publish",
-    "description": "准备视频并显式提交：默认只准备，--mode submit 提交同一操作；原页等待封面完成，未知态不自动重发",
+    "description": "先上传并保存、重开核对平台草稿；上层获得用户确认后才以 submit --user-confirmed 单次提交",
     "access": "write",
     "domain": "channels.weixin.qq.com",
     "strategy": "ui",
@@ -31696,7 +31714,7 @@
         "type": "str",
         "default": "prepare",
         "required": false,
-        "help": "prepare 上传；adopt-draft 核验现有平台草稿；retry-upload 空页重传；recover 核验重启预览；resume 原页恢复；submit 提交",
+        "help": "prepare 上传并保存核对草稿；adopt-draft 核验现有草稿；retry-upload 空页重传；recover 核验重启预览；resume 恢复或重开已保存草稿；submit 用户确认后提交",
         "choices": [
           "prepare",
           "adopt-draft",
@@ -31730,6 +31748,12 @@
         "default": 180,
         "required": false,
         "help": "上传处理等待秒数（1–1800）"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
       },
       {
         "name": "execute",
@@ -35887,7 +35911,7 @@
   {
     "site": "zhihu",
     "name": "answer",
-    "description": "旧版 API 直接创建回答；需要草稿、AI 声明及防重时使用 answer-submit",
+    "description": "直接发布已停用；用 answer-submit 先保存核对草稿，用户确认后单独 submit",
     "access": "write",
     "domain": "www.zhihu.com",
     "strategy": "cookie",
@@ -35933,7 +35957,7 @@
     "type": "js",
     "modulePath": "zhihu/answer.js",
     "sourceFile": "zhihu/answer.js",
-    "navigateBefore": "https://www.zhihu.com"
+    "navigateBefore": false
   },
   {
     "site": "zhihu",
@@ -36094,6 +36118,12 @@
         "default": 120,
         "required": false,
         "help": "每步等待秒数，回答草稿阶段最多120"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
       },
       {
         "name": "execute",
@@ -36375,6 +36405,12 @@
         "default": 120,
         "required": false,
         "help": "草稿核对等待秒数"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
       },
       {
         "name": "execute",
@@ -37108,6 +37144,12 @@
         "default": 180,
         "required": false,
         "help": "核对等待秒数"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
       },
       {
         "name": "execute",

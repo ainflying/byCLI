@@ -60,7 +60,7 @@ describe('publisher durable submission lifecycle', () => {
                     responsePreview: JSON.stringify({ code: 0, data: { publish_type: 'article', result: `{"id":${id}}` } }) }];
             }),
         };
-        const [row] = await manageDraft(page, { operation: file, mode: 'submit', execute: true }, 'article');
+        const [row] = await manageDraft(page, { operation: file, mode: 'submit', 'user-confirmed': true, execute: true }, 'article');
         expect(row).toMatchObject({ status: 'submitted', target: `article:${id}`, message: 'Platform receipt confirms submission; verify public content separately' });
         expect(page.readNetworkCapture).toHaveBeenCalledTimes(2); expect(page.click).toHaveBeenCalledTimes(1); d.window.close();
     });
@@ -70,8 +70,8 @@ describe('publisher durable submission lifecycle', () => {
             expect(JSON.parse(await readFile(file))).toMatchObject({ submitted: true, status: 'submit_unknown' });
             throw Error('transport interrupted');
         }) };
-        await expect(manageDraft(page, { operation: file, mode: 'submit', execute: true }, 'article')).rejects.toThrow('transport');
-        expect((await manageDraft(page, { operation: file, mode: 'submit', execute: true }, 'article'))[0]).toMatchObject({ status: 'submit_unknown', submitted: true });
+        await expect(manageDraft(page, { operation: file, mode: 'submit', 'user-confirmed': true, execute: true }, 'article')).rejects.toThrow('transport');
+        expect((await manageDraft(page, { operation: file, mode: 'submit', 'user-confirmed': true, execute: true }, 'article'))[0]).toMatchObject({ status: 'submit_unknown', submitted: true });
         expect(page.click).toHaveBeenCalledTimes(1); d.window.close();
     });
     it.each(['content', 'binding', 'draft-id', 'saving'])('refuses changed %s without clicking', async change => {
@@ -81,7 +81,7 @@ describe('publisher durable submission lifecycle', () => {
         if (change === 'saving') d.window.document.querySelector('.DraftStatusTip').textContent = '保存中';
         if (change === 'draft-id') d.reconfigure({ url: 'https://zhuanlan.zhihu.com/p/123/edit' });
         const page = { setActivePage: vi.fn(), evaluate: js => js.startsWith('(async function accountDOM') ? { status: 200, slug: 'test-owner' } : js.startsWith('(async function articleDraftDOM') ? (change === 'saving' ? { ...serverArticle, body: 'unsaved prior content' } : serverArticle) : d.window.eval(js), click: vi.fn() };
-        await expect(manageDraft(page, { operation: file, mode: 'submit', execute: true }, 'article')).rejects.toThrow();
+        await expect(manageDraft(page, { operation: file, mode: 'submit', 'user-confirmed': true, execute: true }, 'article')).rejects.toThrow();
         expect(page.click).not.toHaveBeenCalled(); d.window.close();
     });
     it('defaults to reopen, and refuses invalid modes before a click', async () => {
@@ -124,7 +124,7 @@ describe('precision-safe publish receipts', () => {
 it('refuses a changed account before any publish click', async () => {
     const { file, value } = await journal(); const d = article(value);
     const page = { setActivePage: vi.fn(), evaluate: js => js.startsWith('(async function accountDOM') ? { status: 200, slug: 'other-owner' } : js.startsWith('(async function articleDraftDOM') ? serverArticle : d.window.eval(js), click: vi.fn() };
-    await expect(manageDraft(page, { operation: file, mode: 'submit', execute: true }, 'article')).rejects.toThrow('account changed');
+    await expect(manageDraft(page, { operation: file, mode: 'submit', 'user-confirmed': true, execute: true }, 'article')).rejects.toThrow('account changed');
     expect(page.click).not.toHaveBeenCalled(); expect(JSON.parse(await readFile(file)).submitted).toBe(false); d.window.close();
 });
 
@@ -132,7 +132,7 @@ it('accepts a hidden save badge only after persisted readback and with unchanged
     const { file, value } = await journal(); const d = article(value);
     d.window.document.querySelector('.DraftStatusTip').remove();
     const page = { setActivePage: vi.fn(), evaluate: js => js.startsWith('(async function accountDOM') ? { status: 200, slug: 'test-owner' } : js.startsWith('(async function articleDraftDOM') ? serverArticle : d.window.eval(js), click: vi.fn().mockRejectedValue(Error('after click')) };
-    await expect(manageDraft(page, { operation: file, mode: 'submit', execute: true }, 'article')).rejects.toThrow('after click');
+    await expect(manageDraft(page, { operation: file, mode: 'submit', 'user-confirmed': true, execute: true }, 'article')).rejects.toThrow('after click');
     expect(page.click).toHaveBeenCalledTimes(1); d.window.close();
 });
 
@@ -150,6 +150,6 @@ it('does not resubmit when the operator already published from the retained edit
     const { file, value } = await journal(); const d = article(value);
     d.window.document.body.insertAdjacentHTML('beforeend', '<div>发布成功</div>');
     const page = { setActivePage: vi.fn(), evaluate: js => js.startsWith('(async function accountDOM') ? { status: 200, slug: 'test-owner' } : js.startsWith('(async function articleDraftDOM') ? serverArticle : d.window.eval(js), click: vi.fn() };
-    expect((await manageDraft(page, { operation: file, mode: 'submit', execute: true }, 'article'))[0]).toMatchObject({ status: 'submitted', submitted: true });
+    expect((await manageDraft(page, { operation: file, mode: 'submit', 'user-confirmed': true, execute: true }, 'article'))[0]).toMatchObject({ status: 'submitted', submitted: true });
     expect(page.click).not.toHaveBeenCalled(); d.window.close();
 });

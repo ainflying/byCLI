@@ -1,3 +1,4 @@
+import { requirePublishConfirmation, USER_CONFIRMED_ARG } from '../../_shared/publish-confirmation.js';
 import { cli, Strategy } from '@sovovs/bycli/registry';
 import { ArgumentError, CommandExecutionError, TimeoutError } from '@sovovs/bycli/errors';
 import { Page } from '@sovovs/bycli/browser/page';
@@ -14,6 +15,7 @@ const compact = value => String(value || '').replace(/\s+/g, '');
 const sameImages = (a, b) => a.length === b.length && a.every((item, i) => ['method', 'width', 'height', 'hash'].every(key => item[key] === b[i][key]));
 const editorUrl = op => `https://baijiahao.baidu.com/builder/rc/edit?type=${op.kind === 'video' ? 'videoV2' : 'news'}${op.id ? `&article_id=${op.id}` : ''}`;
 export function validatePublish(args) {
+  requirePublishConfirmation(args);
   if (!args.operation || typeof args.operation !== 'string') throw new ArgumentError('--operation must name a local journal path');
   if (!modes.includes(args.mode ?? 'prepare')) throw new ArgumentError('Unsupported publishing mode');
   if (args.mode !== 'status' && !args.execute) throw new ArgumentError('Use --execute for preparation, editor changes or submission');
@@ -258,6 +260,7 @@ export async function publish(page, args, kind, createEditor = (session, profile
         await account(editor, op.accountId); await remoteDraft(page, op); await snapshot(editor, op);
         const state = await inspect(editor, 'submit', op);
         if (!state.selector) throw new CommandExecutionError('Publish control is unavailable');
+        op.userConfirmedAt = new Date().toISOString();
         op.submitted = true; op.submittedAt = new Date().toISOString(); op.status = 'submission_unknown';
         op.message = 'Submission attempted once; reconcile the exact ID before further action'; await saveOperation(file, op);
         await editor.focusWindow(); await editor.wait(0.15); await editor.click(state.selector);
@@ -283,7 +286,7 @@ export async function publish(page, args, kind, createEditor = (session, profile
 }
 export function makeBaijiahaoPublishCommand(name, kind) {
   return cli({ site: 'baijiahao', name, access: 'write', domain: 'baijiahao.baidu.com', strategy: Strategy.UI, browser: true, navigateBefore: false,
-    description: `${kind === 'video' ? '视频' : '图文/文章'}准备、上传、保存草稿、重开核对、单次提交和精确状态读取；人工完成验证码`,
+    description: `${kind === 'video' ? '视频' : '图文/文章'}准备、上传、保存草稿、重开核对；上层获得用户确认后 submit --user-confirmed 单次提交；人工完成验证码`,
     validateArgs: validatePublish,
     args: [
       { name: 'operation', required: true, help: '持久操作记录路径，父目录须已存在；不得删除后重试未知提交' },
@@ -297,6 +300,7 @@ export function makeBaijiahaoPublishCommand(name, kind) {
       { name: 'vertical-cover', help: 'prepare 视频必填：竖版封面文件，可用同图裁切' },
       { name: 'ai-generated', choices: ['yes', 'no'], help: 'prepare 必填：按实际内容声明' },
       { name: 'timeout', type: 'int', default: 180, help: '各阶段等待秒数 1–1800；超时保留原页和操作记录' },
+      USER_CONFIRMED_ARG,
       { name: 'execute', type: 'boolean', help: '执行准备、重开、恢复或提交；status 不需要' },
     ], columns: PUBLISH_COLUMNS, func: (page, args) => publish(page, args, kind) });
 }
