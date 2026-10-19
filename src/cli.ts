@@ -38,6 +38,7 @@ import { aliasForContextId, loadProfileConfig, renameProfile, resolveProfileCont
 import { formatDaemonVersion, isDaemonStale } from './browser/daemon-version.js';
 import type { BrowserDownloadWaitResult, IPage, ScreenshotOptions } from './types.js';
 import type { BrowserWindowMode } from './runtime.js';
+import { DEFAULT_BROWSER_COMMAND_TIMEOUT, DEFAULT_BROWSER_CONNECT_TIMEOUT } from './runtime.js';
 import { redactValue } from './observation/redaction.js';
 
 const CLI_FILE = fileURLToPath(import.meta.url);
@@ -2666,7 +2667,9 @@ cli({
         try {
           rawJson = execFileSync(invocation.binary, execArgs, {
             cwd: invocation.cwd,
-            timeout: 30000,
+            // Verification must not kill a valid adapter before the existing
+            // browser connect/command budgets expire (e.g. media downloads).
+            timeout: (DEFAULT_BROWSER_CONNECT_TIMEOUT + DEFAULT_BROWSER_COMMAND_TIMEOUT) * 1000,
             encoding: 'utf-8',
             env: process.env,
             stdio: ['pipe', 'pipe', 'pipe'],

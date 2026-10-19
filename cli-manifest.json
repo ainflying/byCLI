@@ -2025,6 +2025,544 @@
     "sourceFile": "baidu-scholar/search.js"
   },
   {
+    "site": "baijiahao",
+    "name": "article-publish",
+    "description": "图文/文章准备、上传、保存草稿、重开核对、单次提交和精确状态读取；人工完成验证码",
+    "access": "write",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录路径，父目录须已存在；不得删除后重试未知提交"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "prepare 上传保存；resume 原页续办；reopen 核对已保存草稿；submit 单次公开提交；status 只读取状态",
+        "choices": [
+          "prepare",
+          "resume",
+          "reopen",
+          "submit",
+          "status"
+        ]
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：视频 2–50 字，文章 2–64 字"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "prepare：视频文件或 UTF-8 纯文本正文；正文不包含标题"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "prepare：纯文本正文，与 file 二选一"
+      },
+      {
+        "name": "draft-id",
+        "type": "str",
+        "required": false,
+        "help": "仅 resume：保存回执未知时，提供已核对的精确草稿 ID；不重新保存或按标题猜测"
+      },
+      {
+        "name": "images",
+        "type": "str",
+        "required": false,
+        "help": "prepare：有序本地图片路径 JSON 数组；追加到正文末尾"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare：横版封面文件"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 视频必填：竖版封面文件，可用同图裁切"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：按实际内容声明",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行准备、重开、恢复或提交；status 不需要"
+      }
+    ],
+    "columns": [
+      "operationId",
+      "contentKind",
+      "status",
+      "submitted",
+      "id",
+      "nid",
+      "accountId",
+      "title",
+      "aiGenerated",
+      "editor",
+      "publicUrl",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/article-publish.js",
+    "sourceFile": "baijiahao/article-publish.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "article-stats",
+    "description": "读取本人图文/文章阅读及互动：精确管理 ID，真实 0 与缺失值分开",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "精确管理 ID；不是 nid，也不按标题模糊查找"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索起日 YYYY-MM-DD，与 end-date 成对；默认作品发表日"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索止日 YYYY-MM-DD，最晚上海今日；不承诺计数的累计或区间口径"
+      }
+    ],
+    "columns": [
+      "id",
+      "nid",
+      "contentKind",
+      "title",
+      "status",
+      "reads",
+      "likes",
+      "comments",
+      "collections",
+      "shares",
+      "observation",
+      "unavailableMetrics"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/article-stats.js",
+    "sourceFile": "baijiahao/article-stats.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "image-text-publish",
+    "description": "图文/文章准备、上传、保存草稿、重开核对、单次提交和精确状态读取；人工完成验证码",
+    "access": "write",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录路径，父目录须已存在；不得删除后重试未知提交"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "prepare 上传保存；resume 原页续办；reopen 核对已保存草稿；submit 单次公开提交；status 只读取状态",
+        "choices": [
+          "prepare",
+          "resume",
+          "reopen",
+          "submit",
+          "status"
+        ]
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：视频 2–50 字，文章 2–64 字"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "prepare：视频文件或 UTF-8 纯文本正文；正文不包含标题"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "prepare：纯文本正文，与 file 二选一"
+      },
+      {
+        "name": "draft-id",
+        "type": "str",
+        "required": false,
+        "help": "仅 resume：保存回执未知时，提供已核对的精确草稿 ID；不重新保存或按标题猜测"
+      },
+      {
+        "name": "images",
+        "type": "str",
+        "required": false,
+        "help": "prepare：有序本地图片路径 JSON 数组；追加到正文末尾"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare：横版封面文件"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 视频必填：竖版封面文件，可用同图裁切"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：按实际内容声明",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行准备、重开、恢复或提交；status 不需要"
+      }
+    ],
+    "columns": [
+      "operationId",
+      "contentKind",
+      "status",
+      "submitted",
+      "id",
+      "nid",
+      "accountId",
+      "title",
+      "aiGenerated",
+      "editor",
+      "publicUrl",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/image-text-publish.js",
+    "sourceFile": "baijiahao/image-text-publish.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "image-text-stats",
+    "description": "读取本人图文/文章阅读及互动：精确管理 ID，真实 0 与缺失值分开",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "精确管理 ID；不是 nid，也不按标题模糊查找"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索起日 YYYY-MM-DD，与 end-date 成对；默认作品发表日"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索止日 YYYY-MM-DD，最晚上海今日；不承诺计数的累计或区间口径"
+      }
+    ],
+    "columns": [
+      "id",
+      "nid",
+      "contentKind",
+      "title",
+      "status",
+      "reads",
+      "likes",
+      "comments",
+      "collections",
+      "shares",
+      "observation",
+      "unavailableMetrics"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/image-text-stats.js",
+    "sourceFile": "baijiahao/image-text-stats.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "video-download",
+    "description": "下载公开可播放的百家号/好看视频；不限定本人账号，不接受草稿预览，不覆盖已有文件",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "url",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "正式百家号 /s、mbd videolanding 或好看 /v 链接"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "required": true,
+        "help": "本地输出目录；下载遵循 Node 的现有代理/NO_PROXY 配置"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 60,
+        "required": false,
+        "help": "元数据/下载等待秒数，1–600"
+      }
+    ],
+    "columns": [
+      "id",
+      "title",
+      "sourceUrl",
+      "path",
+      "bytes",
+      "durationSeconds",
+      "width",
+      "height",
+      "sha256"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/video-download.js",
+    "sourceFile": "baijiahao/video-download.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "video-publish",
+    "description": "视频准备、上传、保存草稿、重开核对、单次提交和精确状态读取；人工完成验证码",
+    "access": "write",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录路径，父目录须已存在；不得删除后重试未知提交"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "prepare 上传保存；resume 原页续办；reopen 核对已保存草稿；submit 单次公开提交；status 只读取状态",
+        "choices": [
+          "prepare",
+          "resume",
+          "reopen",
+          "submit",
+          "status"
+        ]
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：视频 2–50 字，文章 2–64 字"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "prepare：视频文件或 UTF-8 纯文本正文；正文不包含标题"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "prepare：纯文本正文，与 file 二选一"
+      },
+      {
+        "name": "draft-id",
+        "type": "str",
+        "required": false,
+        "help": "仅 resume：保存回执未知时，提供已核对的精确草稿 ID；不重新保存或按标题猜测"
+      },
+      {
+        "name": "images",
+        "type": "str",
+        "required": false,
+        "help": "prepare：有序本地图片路径 JSON 数组；追加到正文末尾"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare：横版封面文件"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 视频必填：竖版封面文件，可用同图裁切"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：按实际内容声明",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行准备、重开、恢复或提交；status 不需要"
+      }
+    ],
+    "columns": [
+      "operationId",
+      "contentKind",
+      "status",
+      "submitted",
+      "id",
+      "nid",
+      "accountId",
+      "title",
+      "aiGenerated",
+      "editor",
+      "publicUrl",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/video-publish.js",
+    "sourceFile": "baijiahao/video-publish.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "video-stats",
+    "description": "读取本人视频播放及互动：精确管理 ID，真实 0 与缺失值分开",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "精确管理 ID；不是 nid，也不按标题模糊查找"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索起日 YYYY-MM-DD，与 end-date 成对；默认作品发表日"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索止日 YYYY-MM-DD，最晚上海今日；不承诺计数的累计或区间口径"
+      }
+    ],
+    "columns": [
+      "id",
+      "nid",
+      "contentKind",
+      "title",
+      "status",
+      "plays",
+      "likes",
+      "comments",
+      "collections",
+      "shares",
+      "observation",
+      "unavailableMetrics"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/video-stats.js",
+    "sourceFile": "baijiahao/video-stats.js",
+    "navigateBefore": false
+  },
+  {
     "site": "band",
     "name": "bands",
     "description": "List all Bands you belong to",

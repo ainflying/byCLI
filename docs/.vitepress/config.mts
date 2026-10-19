@@ -55,6 +55,7 @@ export default defineConfig({
                 { text: 'Tieba', link: '/adapters/browser/tieba' },
                 { text: 'Bilibili', link: '/adapters/browser/bilibili' },
                 { text: 'Zhihu', link: '/adapters/browser/zhihu' },
+                { text: 'Baijiahao', link: '/adapters/browser/baijiahao' },
                 { text: 'Xiaohongshu', link: '/adapters/browser/xiaohongshu' },
                 { text: 'Rednote', link: '/adapters/browser/rednote' },
                 { text: 'Xiaoe', link: '/adapters/browser/xiaoe' },
