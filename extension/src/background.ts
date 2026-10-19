@@ -959,7 +959,9 @@ async function findReusableOwnedContainerTab(windowId: number, groupId: number |
 function initialTabIsAvailable(tabId: number | undefined): tabId is number {
   if (tabId === undefined) return false;
   for (const session of automationSessions.values()) {
-    if (session.owned && session.preferredTabId === tabId) return false;
+    // Explicitly bound user tabs are occupied too. A new adapter lease must
+    // never reset their restored editor to about:blank after Chrome restarts.
+    if (session.preferredTabId === tabId) return false;
   }
   return true;
 }

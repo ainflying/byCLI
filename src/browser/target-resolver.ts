@@ -38,6 +38,8 @@
  * a caller actually traversed.
  */
 
+import { DEEP_QUERY_JS } from './dom-query.js';
+
 export interface ResolveOptions {
   /**
    * When CSS matches multiple elements, pick the element at this 0-based
@@ -76,6 +78,7 @@ export function resolveTargetJs(ref: string, opts: ResolveOptions = {}): string 
   const firstOnMulti = opts.firstOnMulti === true ? 'true' : 'false';
   return `
     (() => {
+      ${DEEP_QUERY_JS}
       const ref = ${safeRef};
       const nth = ${nthJs};
       const firstOnMulti = ${firstOnMulti};
@@ -150,18 +153,17 @@ export function resolveTargetJs(ref: string, opts: ResolveOptions = {}): string 
           // unique element, that's our hit.
           try {
             if (fp.id) {
-              const byId = document.getElementById(fp.id);
-              if (byId) tryAdd(byId);
+              for (const byId of deepQueryAll('[id]')) { if (byId.id === fp.id) tryAdd(byId); }
             }
             if (fp.testId) {
-              const byTestIdA = document.querySelectorAll('[data-testid="' + fp.testId.replace(/"/g, '\\\\"') + '"]');
+              const byTestIdA = deepQueryAll('[data-testid="' + fp.testId.replace(/"/g, '\\\\"') + '"]');
               for (let i = 0; i < byTestIdA.length; i++) tryAdd(byTestIdA[i]);
-              const byTestIdB = document.querySelectorAll('[data-test="' + fp.testId.replace(/"/g, '\\\\"') + '"]');
+              const byTestIdB = deepQueryAll('[data-test="' + fp.testId.replace(/"/g, '\\\\"') + '"]');
               for (let i = 0; i < byTestIdB.length; i++) tryAdd(byTestIdB[i]);
             }
             // aria-label is only a useful shortlist when nothing stronger is set
             if (candidates.length === 0 && fp.ariaLabel) {
-              const byAria = document.querySelectorAll('[aria-label="' + fp.ariaLabel.replace(/"/g, '\\\\"') + '"]');
+              const byAria = deepQueryAll('[aria-label="' + fp.ariaLabel.replace(/"/g, '\\\\"') + '"]');
               for (let i = 0; i < byAria.length; i++) tryAdd(byAria[i]);
             }
           } catch (_) { /* bad selectors from weird fp values — skip */ }
@@ -169,8 +171,8 @@ export function resolveTargetJs(ref: string, opts: ResolveOptions = {}): string 
         }
 
         const fp = identity[ref];
-        let el = document.querySelector('[data-bycli-ref="' + ref + '"]');
-        if (!el) el = document.querySelector('[data-ref="' + ref + '"]');
+        let el = deepQueryAll('[data-bycli-ref="' + ref + '"]')[0];
+        if (!el) el = deepQueryAll('[data-ref="' + ref + '"]')[0];
 
         // If the ref tag is gone from the DOM, last-chance reidentify.
         if (!el) {
@@ -232,7 +234,7 @@ export function resolveTargetJs(ref: string, opts: ResolveOptions = {}): string 
       {
         let matches;
         try {
-          matches = document.querySelectorAll(ref);
+          matches = deepQueryAll(ref);
         } catch (e) {
           return {
             ok: false,

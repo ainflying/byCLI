@@ -72,7 +72,7 @@ describe('zhihu answer-waiting-draft', () => {
         const result = await cmd().func(page, { target: questionId, text: '第一段\n\n第二段', execute: true });
         expect(result[0]).toMatchObject({ status: 'success', outcome: 'saved', mode: 'new', verified: true, published: false, editor_open: false });
         expect(page.insertText).toHaveBeenCalledWith('第一段\n\n第二段');
-        expect(page.goto).toHaveBeenCalledWith('about:blank');
+        expect(page.goto).toHaveBeenCalledWith('https://www.zhihu.com/creator');
         expect(page.actions.every(a => ['open', 'save', 'insert'].includes(a))).toBe(true);
     });
     it('follows the own-answer link and updates an edit draft', async () => {

@@ -518,25 +518,44 @@ export async function setFileInputFiles(
   await chrome.debugger.sendCommand({ tabId }, 'DOM.enable');
 
   // Get the document root
-  const doc = await chrome.debugger.sendCommand({ tabId }, 'DOM.getDocument') as {
-    root: { nodeId: number };
+  type UploadNode = { nodeId: number; children?: UploadNode[]; shadowRoots?: UploadNode[]; shadowRootType?: string };
+  const doc = await chrome.debugger.sendCommand({ tabId }, 'DOM.getDocument', { depth: -1, pierce: true }) as {
+    root: UploadNode;
   };
 
   // Find the file input element
   const query = selector || 'input[type="file"]';
-  const result = await chrome.debugger.sendCommand({ tabId }, 'DOM.querySelector', {
-    nodeId: doc.root.nodeId,
-    selector: query,
-  }) as { nodeId: number };
-
-  if (!result.nodeId) {
-    throw new Error(`No element found matching selector: ${query}`);
+  const roots = [doc.root.nodeId];
+  function collect(node: UploadNode): void {
+    for (const root of node.shadowRoots || []) {
+      if (root.shadowRootType !== 'open') continue;
+      roots.push(root.nodeId);
+      collect(root);
+    }
+    for (const child of node.children || []) collect(child);
+  }
+  collect(doc.root);
+  const matches = new Set<number>();
+  for (const nodeId of roots) {
+    const result = await chrome.debugger.sendCommand({ tabId }, 'DOM.querySelectorAll', {
+      nodeId, selector: query,
+    }) as { nodeIds: number[] };
+    for (const id of result.nodeIds || []) matches.add(id);
+  }
+  if (matches.size !== 1) throw new Error(`File input selector must match exactly one element; got ${matches.size}`);
+  const nodeId = [...matches][0];
+  const attributes = await chrome.debugger.sendCommand({ tabId }, 'DOM.getAttributes', { nodeId }) as { attributes: string[] };
+  const attrs = new Map<string, string>();
+  for (let i = 0; i < attributes.attributes.length; i += 2) attrs.set(attributes.attributes[i], attributes.attributes[i + 1]);
+  const description = await chrome.debugger.sendCommand({ tabId }, 'DOM.describeNode', { nodeId }) as { node: { localName: string } };
+  if (description.node.localName !== 'input' || attrs.get('type')?.toLowerCase() !== 'file') {
+    throw new Error('Upload target is not an input[type=file]');
   }
 
   // Set files directly via CDP — Chrome reads from local filesystem
   await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
     files,
-    nodeId: result.nodeId,
+    nodeId,
   });
 }
 

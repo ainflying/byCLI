@@ -52,3 +52,16 @@ describe('zhihu answer', () => {
         expect(page.evaluate.mock.calls[1][0]).toContain('Answer API response did not include a created answer id');
     });
 });
+
+it('preserves an unsafe numeric answer id from the raw API JSON token', async () => {
+    const id = '2095538085576578974';
+    const page = { goto: vi.fn(), wait: vi.fn(), evaluate: vi.fn()
+        .mockResolvedValueOnce({ slug: 'alice' })
+        .mockImplementationOnce(js => {
+            const run = new Function('fetch', `return ${js}`);
+            return run(async () => ({ ok: true, status: 200, text: async () => `{"id":${id},"author":{"id":22}}` }));
+        }) };
+    const [row] = await getRegistry().get('zhihu/answer').func(page, { target: 'question:1', text: 'body', execute: true });
+    expect(row.created_target).toBe(`answer:1:${id}`);
+    expect(row.created_url).toBe(`https://www.zhihu.com/question/1/answer/${id}`);
+});

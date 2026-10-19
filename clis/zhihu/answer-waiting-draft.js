@@ -53,7 +53,7 @@ async function waitSaved(page, options, expected) {
     throw new CliError('DRAFT_SAVE_TIMEOUT', 'Could not confirm that Zhihu saved the complete draft', 'Inspect the editor before retrying; some content may already have been saved');
 }
 
-cli({
+export const answerDraftCommand = cli({
     site: 'zhihu', name: 'answer-waiting-draft', access: 'write',
     description: '保存知乎回答草稿（新回答或已有回答的编辑草稿，不发布）',
     domain: 'www.zhihu.com', strategy: Strategy.COOKIE,
@@ -106,7 +106,7 @@ cli({
         // Reload from Zhihu and reopen: a local DOM update or stale save badge is
         // insufficient evidence of a persisted draft.
         const draftUrl = saved.url.split('#')[0];
-        await page.goto('about:blank');
+        await page.goto('https://www.zhihu.com/creator');
         await page.goto(`${draftUrl}#write`);
         const restored = await openEditor(page, options);
         if (normalizeDraftText(restored.text) !== normalizeDraftText(plan.expected) || restored.mode !== initial.mode || !restored.saved) {

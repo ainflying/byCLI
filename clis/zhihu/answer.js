@@ -1,4 +1,5 @@
 import { CliError, CommandExecutionError } from '@sovovs/bycli/errors';
+import { exactResultId } from './_shared/receipt.js';
 import { cli, Strategy } from '@sovovs/bycli/registry';
 import { assertAllowedKinds, parseTarget } from './target.js';
 import { buildResultRow, requireExecute, resolveCurrentUserIdentity, resolvePayload } from './write-shared.js';
@@ -6,7 +7,7 @@ cli({
     site: 'zhihu',
     name: 'answer',
     access: 'write',
-    description: 'Answer a Zhihu question',
+    description: '旧版 API 直接创建回答；需要草稿、AI 声明及防重时使用 answer-submit',
     domain: 'www.zhihu.com',
     strategy: Strategy.COOKIE,
     browser: true,
@@ -37,10 +38,12 @@ cli({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content: content, reshipment_settings: 'disallowed' }),
             });
-            var data = await resp.json();
+            var raw = await resp.text();
+            var data; try { data = JSON.parse(raw); } catch { return { ok:false, status:resp.status, message:'Answer API returned invalid JSON' }; }
+            var createdId = (${exactResultId.toString()})(raw);
             if (!resp.ok) return { ok: false, status: resp.status, message: data.error ? data.error.message : 'unknown error' };
-            if (!data || !data.id) return { ok: false, status: resp.status, message: 'Answer API response did not include a created answer id' };
-            return { ok: true, id: String(data.id), url: data.url || ('https://www.zhihu.com/question/' + questionId + '/answer/' + data.id) };
+            if (!data || !createdId) return { ok: false, status: resp.status, message: 'Answer API response did not include a created answer id' };
+            return { ok: true, id: createdId, url: 'https://www.zhihu.com/question/' + questionId + '/answer/' + createdId };
         })()`);
         if (!apiResult?.ok) {
             throw new CliError('COMMAND_EXEC', apiResult?.message || 'Failed to create answer');

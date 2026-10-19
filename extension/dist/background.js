@@ -542,18 +542,38 @@ async function screenshot(tabId, options = {}) {
 async function setFileInputFiles(tabId, files, selector) {
   await ensureAttached(tabId);
   await chrome.debugger.sendCommand({ tabId }, "DOM.enable");
-  const doc = await chrome.debugger.sendCommand({ tabId }, "DOM.getDocument");
+  const doc = await chrome.debugger.sendCommand({ tabId }, "DOM.getDocument", { depth: -1, pierce: true });
   const query = selector || 'input[type="file"]';
-  const result = await chrome.debugger.sendCommand({ tabId }, "DOM.querySelector", {
-    nodeId: doc.root.nodeId,
-    selector: query
-  });
-  if (!result.nodeId) {
-    throw new Error(`No element found matching selector: ${query}`);
+  const roots = [doc.root.nodeId];
+  function collect(node) {
+    for (const root of node.shadowRoots || []) {
+      if (root.shadowRootType !== "open") continue;
+      roots.push(root.nodeId);
+      collect(root);
+    }
+    for (const child of node.children || []) collect(child);
+  }
+  collect(doc.root);
+  const matches = /* @__PURE__ */ new Set();
+  for (const nodeId2 of roots) {
+    const result = await chrome.debugger.sendCommand({ tabId }, "DOM.querySelectorAll", {
+      nodeId: nodeId2,
+      selector: query
+    });
+    for (const id of result.nodeIds || []) matches.add(id);
+  }
+  if (matches.size !== 1) throw new Error(`File input selector must match exactly one element; got ${matches.size}`);
+  const nodeId = [...matches][0];
+  const attributes = await chrome.debugger.sendCommand({ tabId }, "DOM.getAttributes", { nodeId });
+  const attrs = /* @__PURE__ */ new Map();
+  for (let i = 0; i < attributes.attributes.length; i += 2) attrs.set(attributes.attributes[i], attributes.attributes[i + 1]);
+  const description = await chrome.debugger.sendCommand({ tabId }, "DOM.describeNode", { nodeId });
+  if (description.node.localName !== "input" || attrs.get("type")?.toLowerCase() !== "file") {
+    throw new Error("Upload target is not an input[type=file]");
   }
   await chrome.debugger.sendCommand({ tabId }, "DOM.setFileInputFiles", {
     files,
-    nodeId: result.nodeId
+    nodeId
   });
 }
 function matchesDownloadPattern(item, pattern) {
@@ -2418,7 +2438,7 @@ async function findReusableOwnedContainerTab(windowId, groupId) {
 function initialTabIsAvailable(tabId) {
   if (tabId === void 0) return false;
   for (const session of automationSessions.values()) {
-    if (session.owned && session.preferredTabId === tabId) return false;
+    if (session.preferredTabId === tabId) return false;
   }
   return true;
 }

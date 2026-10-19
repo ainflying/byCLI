@@ -542,11 +542,10 @@ export abstract class BasePage implements IPage {
       if (marked) {
         await this.evaluateWithArgs(`
           (() => {
-            for (const el of document.querySelectorAll(selector)) {
-              el.removeAttribute(markerAttr);
-            }
+            const el = window.__resolved;
+            if (el?.getAttribute(markerAttr) === markerValue) el.removeAttribute(markerAttr);
           })()
-        `, { selector, markerAttr }).catch(() => undefined);
+        `, { selector, markerAttr, markerValue }).catch(() => undefined);
       }
     }
   }
@@ -850,11 +849,10 @@ export abstract class BasePage implements IPage {
       if (marked) {
         await this.evaluateWithArgs(`
           (() => {
-            for (const el of document.querySelectorAll(selector)) {
-              el.removeAttribute(markerAttr);
-            }
+            const el = window.__resolved;
+            if (el?.getAttribute(markerAttr) === markerValue) el.removeAttribute(markerAttr);
           })()
-        `, { selector, markerAttr }).catch(() => undefined);
+        `, { selector, markerAttr, markerValue }).catch(() => undefined);
       }
     }
   }

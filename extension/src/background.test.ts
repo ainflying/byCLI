@@ -2723,6 +2723,18 @@ describe('background tab isolation', () => {
     expect(tabs.find((tab) => tab.id === 78)?.groupId).toBe(98);
     expect(chrome.tabs.group).toHaveBeenCalledWith({ groupId: 98, tabIds: [78] });
   });
+  it('never blanks a bound restored editor when allocating a new adapter lease', async () => {
+    const { chrome, tabs, groups } = createChromeMock();
+    tabs.push({ id: 77, windowId: 7, url: 'https://channels.weixin.qq.com/platform/post/create', title: 'editor', active: true, status: 'complete', groupId: 99 });
+    groups.push({ id: 99, windowId: 7, title: 'byCLI Adapter', color: 'orange', collapsed: false });
+    vi.stubGlobal('chrome', chrome);
+    const mod = await import('./background');
+    mod.__test__.setSession(browserKey('restored-editor'), { windowId: 7, owned: false, preferredTabId: 77 });
+    const id = await mod.__test__.resolveTabId(undefined, adapterKey('new-after-restart'));
+    expect(id).not.toBe(77);
+    expect(tabs.find(tab => tab.id === 77)?.url).toBe('https://channels.weixin.qq.com/platform/post/create');
+    expect(chrome.tabs.update).not.toHaveBeenCalledWith(77, expect.objectContaining({ url: 'about:blank' }));
+  });
 
   it('uses the lowest group id as the final byCLI Adapter group tiebreaker', async () => {
     const { chrome, tabs, groups, setLastFocusedWindowId } = createChromeMock();
