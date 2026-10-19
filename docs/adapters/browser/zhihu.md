@@ -24,6 +24,13 @@
 | `bycli zhihu comment <target> (<text> \| --file <path>) --execute` | Create a top-level comment when a fresh top-level editor is already present |
 | `bycli zhihu answer-waiting-draft <target> (<text> \| --file <path>) --execute` | Save a new answer draft or an existing answer’s unpublished edit draft |
 | `bycli zhihu answer <target>` | Direct publication disabled; use `answer-submit` to save a draft, then obtain user confirmation |
+| `bycli zhihu article-draft` | Create and reopen a persistent article draft with ordered images and an optional cover |
+| `bycli zhihu article-publish` | Reopen/resume an article draft or explicitly submit its existing operation once |
+| `bycli zhihu video-draft` | Upload a video, identify its actual draft type and reopen the exact draft |
+| `bycli zhihu video-publish` | Reopen or explicitly submit the verified video draft once |
+| `bycli zhihu answer-submit` | Prepare/reopen a new answer draft with an AI declaration, then explicitly submit once |
+| `bycli zhihu content-status` | Read a local journal or reconcile exact creator identity and public content |
+| `bycli zhihu content-stats` | Read creator aggregate and daily statistics for article/answer/pin/zvideo |
 
 ## Target Formats
 
@@ -144,3 +151,64 @@ bycli zhihu answer-waiting-draft answer:2077824745589028563:2085034727166292329 
 - Chrome running and **logged into** zhihu.com
 - [Browser Bridge extension](/guide/browser-bridge) installed
 - A logged-in Zhihu session that can access both `www.zhihu.com` and `zhuanlan.zhihu.com`
+
+
+## Creator publishing lifecycle
+
+The new publishing commands use the normal Browser Bridge and the existing answer draft helper. Preparation saves an **unpublished** platform draft and reloads it. Submission is a separate explicit action using the same local operation file. All IDs remain strings. A video uploaded through Zhihu may become a `pin`; the adapter reads the actual type instead of assuming `zvideo`.
+
+```bash
+mkdir -p ./operations
+
+# Plain text with paragraph boundaries; images are appended sequentially in this order.
+bycli zhihu article-draft --title "工作笔记" --file ./article.txt \
+  --images '["./first.png","./second.png"]' --cover ./cover.png \
+  --ai-generated yes --operation ./operations/article.json --execute --keep-tab true
+
+# Reopen an identified draft after closing/restarting the browser; does not reupload.
+bycli zhihu article-publish --operation ./operations/article.json --mode reopen --execute --keep-tab true
+
+# Only this explicit stage attempts public submission. Run after reviewing the draft.
+bycli zhihu article-publish --operation ./operations/article.json --mode submit --user-confirmed --execute
+
+bycli zhihu video-draft ./video.mp4 --title "视频标题" --file ./caption.txt \
+  --ai-generated yes --original no --category 其他 \
+  --operation ./operations/video.json --execute --timeout 300 --keep-tab true
+bycli zhihu video-publish --operation ./operations/video.json --mode reopen --execute --keep-tab true
+# Explicit public submission, after review:
+bycli zhihu video-publish --operation ./operations/video.json --mode submit --user-confirmed --execute
+
+# New answers only; an existing/deleted answer or a different existing draft is protected.
+bycli zhihu answer-submit question:123456 --file ./answer.txt --ai-generated yes \
+  --expected-title "问题的准确标题" --operation ./operations/answer.json --execute --keep-tab true
+bycli zhihu answer-submit --operation ./operations/answer.json --mode reopen --execute --keep-tab true
+# Explicit public submission, after review:
+bycli zhihu answer-submit --operation ./operations/answer.json --mode submit --user-confirmed --execute
+
+# Local status needs no browser. Remote status requires an exact target.
+bycli zhihu content-status --operation ./operations/article.json -f json
+bycli zhihu content-status --operation ./operations/article.json --target article:998877 -f json
+```
+
+The journal is atomically written with mode `0600` and locked during each operation. Preserve it, including after errors. `submit_unknown` is recorded **before** clicking publish; repeating a submit command does not click again. `submitted` means the platform receipt/UI confirmed submission; `public_confirmed` additionally requires an exact creator identity and matching public content. Public-page verification uses the current logged-in session; it does not establish anonymous visibility or a permanent moderation decision. An explicitly abnormal creator content mark prevents public confirmation. Moderation/deletion may later make content unavailable; the adapter never republishes it automatically. Account identity, content, draft ID, visible declaration and enabled publish control are checked before submission.
+
+Article paragraphs are inserted as plain text; Markdown/HTML semantic formatting is not promised. Images upload one at a time, then resource IDs/order are compared on reload. The cover is compared by resource ID because Zhihu rewrites image sizes/URLs. The article editor can remain at “草稿保存中” and does not persist its AI declaration with the draft. Article persistence is therefore checked against the actual editor draft GET response (exact ID, owner, draft state, body, ordered image IDs and cover), both on reopen and immediately before submission: `reopen` first verifies persisted content, then configures the declaration again; `submit` rechecks it. Video uses its generated cover, requires an explicit originality choice and an exact category label. Custom video covers and additional video marks are not exposed by these commands.
+
+`article-publish --mode repair-cover` explicitly retries a missing cover on the same identified unpublished article. It checks account, server body/image identity and the original local cover hash first, uploads once per invocation, and then verifies the server cover. It never recreates or publishes the article.
+
+`article-publish --mode resume` resumes an interrupted preparation only in its bound, unchanged editor without another upload. The optional `--repair-images` rebuilds images in the same unpublished draft after verifying account, full body, current image identities and local file hashes; it is not automatic. If the tab was lost but a precise draft ID was recorded, use `reopen`. An unidentified/interrupted upload is retained for manual inspection rather than repeated. A crash may leave a `.lock` file; inspect the operation before manually removing a stale lock.
+
+## Creator statistics
+
+```bash
+bycli zhihu content-stats article:998877 --days 7 -f json
+bycli zhihu content-stats answer:123456:789012 --days 14 -f json
+bycli zhihu content-stats https://www.zhihu.com/pin/998877 --days 7 -f json
+bycli zhihu content-stats 998877 --type pin --start-date 2026-10-13 --end-date 2026-10-19 --aggregate period -f json
+```
+
+The default is a cumulative overview plus seven days of trend, including Shanghai today. `--aggregate period` restricts the overview to the specified dates. Explicit start/end dates must be paired, cannot be combined with `--days`, and span at most 366 days. Bare IDs require `--type`; a conflicting URL/type is rejected. A permission error never causes a retry with another content type.
+
+`overview` and `trend` keep `views` (`pv`) separate from `plays` (`play`), and preserve upvotes, likes, collections, comments, shares, reposts and follows as distinct counters. Missing values are `null`, actual zeros remain `0`, and missing days are not filled. Rates ending in `_pct` use percentage points; `NaN%`/undetermined values become `null`. Malformed/unsafe counters, inconsistent content identity and duplicate/out-of-range dates fail explicitly. These are logged-in browser creator endpoints, not an official API credential integration.
+
+Earlier implementation evidence: [implementation report](../../research/connector-integration-2026-10-19/zhihu-channels-connector-implementation-2026-10-19.md). Subsequent article, pin and answer command publication, status and statistics evidence is recorded in [remaining validation](../../research/connector-integration-2026-10-19/remaining-validation-2026-10-19.md). The old deleted answer and the later new answer are distinct samples. These are historical observations; the latest user-confirmation guard has not been used to publish another test item.
