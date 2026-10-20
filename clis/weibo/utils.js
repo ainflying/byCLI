@@ -47,6 +47,11 @@ export function normalizeWeiboTarget(raw) {
     if (/^\d+$/.test(input)) {
         return { input, id: input, mblogid: null, url: null };
     }
+    // Short ids copied from the Weibo UI (for example Rnvl93WBe) are
+    // valid mblogids even when the user does not provide the surrounding URL.
+    if (/^[A-Za-z0-9]+$/.test(input)) {
+        return { input, id: null, mblogid: input, url: null };
+    }
 
     let parsed;
     try {
