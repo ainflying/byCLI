@@ -7484,6 +7484,93 @@
   },
   {
     "site": "csdn",
+    "name": "publish-article",
+    "description": "CSDN文章准备、复核、授权后单次提交、回执和状态查询",
+    "access": "write",
+    "domain": "editor.csdn.net",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "prepare",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": ""
+      },
+      {
+        "name": "input",
+        "type": "str",
+        "required": false,
+        "help": "本地文章JSON清单"
+      },
+      {
+        "name": "resume",
+        "type": "str",
+        "required": false,
+        "help": "恢复未改动的失败准备任务"
+      },
+      {
+        "name": "recover",
+        "type": "str",
+        "required": false,
+        "help": "人工授权后，为后台仍是草稿的未知尝试建立一次关联恢复任务"
+      },
+      {
+        "name": "review",
+        "type": "str",
+        "required": false,
+        "help": "复核文章任务"
+      },
+      {
+        "name": "submit",
+        "type": "str",
+        "required": false,
+        "help": "授权后单次提交"
+      },
+      {
+        "name": "confirm",
+        "type": "str",
+        "required": false,
+        "help": "本次复核确认码"
+      },
+      {
+        "name": "status",
+        "type": "str",
+        "required": false,
+        "help": "查询任务与作品状态"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": ""
+      }
+    ],
+    "columns": [
+      "status",
+      "job_id",
+      "title",
+      "account",
+      "draft_id",
+      "submitted",
+      "content_id",
+      "confirmation",
+      "receipt_status",
+      "query_status",
+      "public_url",
+      "report",
+      "preview"
+    ],
+    "type": "js",
+    "modulePath": "csdn/publish-article.js",
+    "sourceFile": "csdn/publish-article.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "csdn",
     "name": "search",
     "description": "Search CSDN",
     "access": "read",
@@ -7547,6 +7634,70 @@
     "type": "js",
     "modulePath": "csdn/search.js",
     "sourceFile": "csdn/search.js"
+  },
+  {
+    "site": "csdn",
+    "name": "stats",
+    "description": "按精确文章及账号读取CSDN发布至今累计数据，核对所属模型、管理行和数据抽屉，不将缺失值填0",
+    "access": "read",
+    "domain": "mp.csdn.net",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "content-id",
+        "type": "str",
+        "required": true,
+        "help": ""
+      },
+      {
+        "name": "account-id",
+        "type": "str",
+        "required": true,
+        "help": ""
+      },
+      {
+        "name": "type",
+        "type": "str",
+        "default": "article",
+        "required": false,
+        "help": "",
+        "choices": [
+          "article"
+        ]
+      },
+      {
+        "name": "scope",
+        "type": "str",
+        "default": "content",
+        "required": false,
+        "help": "",
+        "choices": [
+          "content"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": ""
+      }
+    ],
+    "columns": [
+      "platform",
+      "contentType",
+      "contentId",
+      "title",
+      "collectedAt",
+      "metrics",
+      "extraMetrics"
+    ],
+    "type": "js",
+    "modulePath": "csdn/stats.js",
+    "sourceFile": "csdn/stats.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
   },
   {
     "site": "ctrip",
@@ -16928,6 +17079,88 @@
   },
   {
     "site": "juejin",
+    "name": "publish-article",
+    "description": "掘金文章准备、复核、人工授权后单次提交、回执与状态查询",
+    "access": "write",
+    "domain": "juejin.cn",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "prepare",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "仅准备，不发布"
+      },
+      {
+        "name": "input",
+        "type": "str",
+        "required": false,
+        "help": "本地文章 JSON"
+      },
+      {
+        "name": "resume",
+        "type": "str",
+        "required": false,
+        "help": "恢复同一份失败准备任务，核对原稿后更新内容与设置"
+      },
+      {
+        "name": "review",
+        "type": "str",
+        "required": false,
+        "help": "复核已准备的文章任务"
+      },
+      {
+        "name": "submit",
+        "type": "str",
+        "required": false,
+        "help": "人工授权后单次提交"
+      },
+      {
+        "name": "confirm",
+        "type": "str",
+        "required": false,
+        "help": "本次review的确认码"
+      },
+      {
+        "name": "status",
+        "type": "str",
+        "required": false,
+        "help": "查询文章任务与作品状态"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": "准备超时秒数"
+      }
+    ],
+    "columns": [
+      "status",
+      "job_id",
+      "title",
+      "account",
+      "draft_id",
+      "draft_url",
+      "submitted",
+      "content_id",
+      "confirmation",
+      "receipt_status",
+      "query_status",
+      "public_url",
+      "report",
+      "preview"
+    ],
+    "type": "js",
+    "modulePath": "juejin/publish-article.js",
+    "sourceFile": "juejin/publish-article.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "juejin",
     "name": "search",
     "description": "掘金搜索，支持综合/文章/课程/标签/用户维度与综合/最新/最热排序",
     "access": "read",
@@ -17006,6 +17239,76 @@
     "type": "js",
     "modulePath": "juejin/search.js",
     "sourceFile": "juejin/search.js"
+  },
+  {
+    "site": "juejin",
+    "name": "stats",
+    "description": "按精确文章ID采集掘金单篇分析数据，核对模型及可见表格，缺失分享数标为未提供",
+    "access": "read",
+    "domain": "juejin.cn",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "content-id",
+        "type": "str",
+        "required": true,
+        "help": ""
+      },
+      {
+        "name": "account-id",
+        "type": "str",
+        "required": true,
+        "help": ""
+      },
+      {
+        "name": "type",
+        "type": "str",
+        "default": "article",
+        "required": false,
+        "help": "",
+        "choices": [
+          "article"
+        ]
+      },
+      {
+        "name": "scope",
+        "type": "str",
+        "default": "content",
+        "required": false,
+        "help": "",
+        "choices": [
+          "content"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": ""
+      }
+    ],
+    "columns": [
+      "platform",
+      "contentId",
+      "contentType",
+      "scope",
+      "account",
+      "title",
+      "publishedAt",
+      "collectedAt",
+      "dataAsOf",
+      "period",
+      "source",
+      "metrics",
+      "limitations"
+    ],
+    "type": "js",
+    "modulePath": "juejin/stats.js",
+    "sourceFile": "juejin/stats.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
   },
   {
     "site": "ke",
@@ -25443,6 +25746,331 @@
     "sourceFile": "sogou/search.js"
   },
   {
+    "site": "sohu",
+    "name": "download",
+    "description": "原生下载搜狐号文章内的视频（MP4）",
+    "access": "read",
+    "domain": "www.sohu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "url",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "Sohu account article URL (www.sohu.com/a/… or m.sohu.com/a/…)"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 120,
+        "required": false,
+        "help": "Total file transfer timeout in seconds (1-3600)"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "default": "./sohu-downloads",
+        "required": false,
+        "help": "Output directory"
+      }
+    ],
+    "columns": [
+      "article_id",
+      "video_id",
+      "status",
+      "size",
+      "path"
+    ],
+    "type": "js",
+    "modulePath": "sohu/download.js",
+    "sourceFile": "sohu/download.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "sohu",
+    "name": "publish-article",
+    "description": "准备搜狐号文章：填写纯文本正文与摘要，插入文末图片和封面，人工确认后单次提交、回执与状态查询",
+    "access": "write",
+    "domain": "mp.sohu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "input",
+        "type": "str",
+        "required": false,
+        "help": "Local content JSON manifest"
+      },
+      {
+        "name": "prepare",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": ""
+      },
+      {
+        "name": "review",
+        "type": "str",
+        "required": false,
+        "help": "Review a prepared local job UUID; confirmation expires in 30 minutes"
+      },
+      {
+        "name": "submit",
+        "type": "str",
+        "required": false,
+        "help": "Submit a reviewed job once after explicit human approval"
+      },
+      {
+        "name": "confirm",
+        "type": "str",
+        "required": false,
+        "help": "Exact token from review"
+      },
+      {
+        "name": "status",
+        "type": "str",
+        "required": false,
+        "help": "Query a local job and its exact verified content ID"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": ""
+      }
+    ],
+    "columns": [
+      "status",
+      "job_id",
+      "content_type",
+      "title",
+      "submitted",
+      "account",
+      "content_id",
+      "confirmation",
+      "query_status",
+      "report",
+      "preview"
+    ],
+    "type": "js",
+    "modulePath": "sohu/publish-article.js",
+    "sourceFile": "sohu/publish-article.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "sohu",
+    "name": "publish-gallery",
+    "description": "准备搜狐号图集：上传图片与封面，填写逐图配文和必填项，人工确认后单次提交、回执与状态查询",
+    "access": "write",
+    "domain": "mp.sohu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "input",
+        "type": "str",
+        "required": false,
+        "help": "Local content JSON manifest"
+      },
+      {
+        "name": "prepare",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": ""
+      },
+      {
+        "name": "review",
+        "type": "str",
+        "required": false,
+        "help": "Review a prepared local job UUID; confirmation expires in 30 minutes"
+      },
+      {
+        "name": "submit",
+        "type": "str",
+        "required": false,
+        "help": "Submit a reviewed job once after explicit human approval"
+      },
+      {
+        "name": "confirm",
+        "type": "str",
+        "required": false,
+        "help": "Exact token from review"
+      },
+      {
+        "name": "status",
+        "type": "str",
+        "required": false,
+        "help": "Query a local job and its exact verified content ID"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": ""
+      }
+    ],
+    "columns": [
+      "status",
+      "job_id",
+      "content_type",
+      "title",
+      "submitted",
+      "account",
+      "content_id",
+      "confirmation",
+      "query_status",
+      "report",
+      "preview"
+    ],
+    "type": "js",
+    "modulePath": "sohu/publish-gallery.js",
+    "sourceFile": "sohu/publish-gallery.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "sohu",
+    "name": "publish-video",
+    "description": "准备搜狐号视频：上传视频封面、填写必填项，确认后提交并查询回执与状态",
+    "access": "write",
+    "domain": "mp.sohu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "input",
+        "type": "str",
+        "required": false,
+        "help": "Path to video preparation JSON manifest"
+      },
+      {
+        "name": "review",
+        "type": "str",
+        "required": false,
+        "help": "Review local job UUID and issue a 30-minute confirmation token"
+      },
+      {
+        "name": "submit",
+        "type": "str",
+        "required": false,
+        "help": "Submit reviewed job UUID exactly once, after human approval"
+      },
+      {
+        "name": "confirm",
+        "type": "str",
+        "required": false,
+        "help": "Exact token returned by --review"
+      },
+      {
+        "name": "status",
+        "type": "str",
+        "required": false,
+        "help": "Query local job UUID and exact platform content ID"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": "Overall preparation timeout in seconds"
+      },
+      {
+        "name": "prepare",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "Prepare only; requires --input"
+      }
+    ],
+    "columns": [
+      "status",
+      "job_id",
+      "submitted",
+      "account",
+      "content_id",
+      "confirmation",
+      "query_status",
+      "report",
+      "preview"
+    ],
+    "type": "js",
+    "modulePath": "sohu/publish-video.js",
+    "sourceFile": "sohu/publish-video.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "sohu",
+    "name": "stats",
+    "description": "按精确ID采集搜狐号视频、图集或文章单篇实时数据，并核对后台表格",
+    "access": "read",
+    "domain": "mp.sohu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "content-id",
+        "type": "str",
+        "required": true,
+        "help": ""
+      },
+      {
+        "name": "account-id",
+        "type": "str",
+        "required": false,
+        "help": "Expected Sohu account ID"
+      },
+      {
+        "name": "type",
+        "type": "str",
+        "default": "video",
+        "required": false,
+        "help": "",
+        "choices": [
+          "video",
+          "gallery",
+          "article"
+        ]
+      },
+      {
+        "name": "scope",
+        "type": "str",
+        "default": "content",
+        "required": false,
+        "help": "",
+        "choices": [
+          "content"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "Overall browser command timeout in seconds"
+      }
+    ],
+    "columns": [
+      "platform",
+      "contentId",
+      "contentType",
+      "title",
+      "collectedAt",
+      "metrics"
+    ],
+    "type": "js",
+    "modulePath": "sohu/stats.js",
+    "sourceFile": "sohu/stats.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
     "site": "spotify",
     "name": "auth",
     "description": "Authenticate with Spotify (OAuth — run once)",
@@ -33684,6 +34312,20 @@
         "help": "Full Xiaohongshu note URL with xsec_token, or xhslink short link"
       },
       {
+        "name": "type",
+        "type": "str",
+        "default": "all",
+        "required": false,
+        "help": "Media type: video, image, or all"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 120,
+        "required": false,
+        "help": "Total file transfer timeout in seconds (1-3600)"
+      },
+      {
         "name": "output",
         "type": "str",
         "default": "./xiaohongshu-downloads",
@@ -33695,7 +34337,8 @@
       "index",
       "type",
       "status",
-      "size"
+      "size",
+      "path"
     ],
     "type": "js",
     "modulePath": "xiaohongshu/download.js",
@@ -33848,6 +34491,156 @@
   },
   {
     "site": "xiaohongshu",
+    "name": "publish-images",
+    "description": "准备小红书图文，复核后以确认码单次提交，查询发布回执与精确作品状态",
+    "access": "write",
+    "domain": "creator.xiaohongshu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "input",
+        "type": "str",
+        "required": false,
+        "help": "Path to ordered image JSON manifest"
+      },
+      {
+        "name": "prepare",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": ""
+      },
+      {
+        "name": "review",
+        "type": "str",
+        "required": false,
+        "help": "Review prepared image job UUID; issue a 30-minute confirmation token"
+      },
+      {
+        "name": "submit",
+        "type": "str",
+        "required": false,
+        "help": "Submit image job exactly once, after explicit human approval"
+      },
+      {
+        "name": "confirm",
+        "type": "str",
+        "required": false,
+        "help": "Exact token returned by --review"
+      },
+      {
+        "name": "status",
+        "type": "str",
+        "required": false,
+        "help": "Query image job UUID and exact platform content ID"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": ""
+      }
+    ],
+    "columns": [
+      "status",
+      "job_id",
+      "submitted",
+      "title",
+      "image_count",
+      "account",
+      "content_id",
+      "content_type",
+      "public_url",
+      "confirmation",
+      "expires_at",
+      "receipt_status",
+      "identity_source",
+      "query_status",
+      "query_reason",
+      "report",
+      "preview"
+    ],
+    "type": "js",
+    "modulePath": "xiaohongshu/publish-images.js",
+    "sourceFile": "xiaohongshu/publish-images.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "xiaohongshu",
+    "name": "publish-video",
+    "description": "准备小红书视频笔记：上传视频封面、填写字段，确认后提交并查询回执与状态",
+    "access": "write",
+    "domain": "creator.xiaohongshu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "input",
+        "type": "str",
+        "required": false,
+        "help": "Path to video preparation JSON manifest"
+      },
+      {
+        "name": "review",
+        "type": "str",
+        "required": false,
+        "help": "Review local job UUID and issue a 30-minute confirmation token"
+      },
+      {
+        "name": "submit",
+        "type": "str",
+        "required": false,
+        "help": "Submit reviewed job UUID exactly once, after human approval"
+      },
+      {
+        "name": "confirm",
+        "type": "str",
+        "required": false,
+        "help": "Exact token returned by --review"
+      },
+      {
+        "name": "status",
+        "type": "str",
+        "required": false,
+        "help": "Query local job UUID and exact platform content ID"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": "Overall preparation timeout in seconds"
+      },
+      {
+        "name": "prepare",
+        "type": "bool",
+        "default": false,
+        "required": false,
+        "help": "Prepare only; requires --input"
+      }
+    ],
+    "columns": [
+      "status",
+      "job_id",
+      "submitted",
+      "account",
+      "content_id",
+      "confirmation",
+      "query_status",
+      "report",
+      "preview"
+    ],
+    "type": "js",
+    "modulePath": "xiaohongshu/publish-video.js",
+    "sourceFile": "xiaohongshu/publish-video.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "xiaohongshu",
     "name": "search",
     "description": "搜索小红书笔记",
     "access": "read",
@@ -33882,6 +34675,67 @@
     "modulePath": "xiaohongshu/search.js",
     "sourceFile": "xiaohongshu/search.js",
     "navigateBefore": false
+  },
+  {
+    "site": "xiaohongshu",
+    "name": "stats",
+    "description": "按精确内容ID采集小红书视频或图文详情数据，保留缺失值和原始口径",
+    "access": "read",
+    "domain": "creator.xiaohongshu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "type",
+        "type": "str",
+        "default": "video",
+        "required": false,
+        "help": "Content type; checked against the exact owner record",
+        "choices": [
+          "video",
+          "image"
+        ]
+      },
+      {
+        "name": "content-id",
+        "type": "str",
+        "required": true,
+        "help": ""
+      },
+      {
+        "name": "account-id",
+        "type": "str",
+        "required": false,
+        "help": "Expected public creator account number"
+      },
+      {
+        "name": "scope",
+        "type": "str",
+        "default": "content",
+        "required": false,
+        "help": ""
+      }
+    ],
+    "columns": [
+      "platform",
+      "contentId",
+      "contentType",
+      "scope",
+      "account",
+      "title",
+      "publishedAt",
+      "collectedAt",
+      "dataAsOf",
+      "period",
+      "source",
+      "metrics",
+      "limitations"
+    ],
+    "type": "js",
+    "modulePath": "xiaohongshu/stats.js",
+    "sourceFile": "xiaohongshu/stats.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
   },
   {
     "site": "xiaohongshu",
