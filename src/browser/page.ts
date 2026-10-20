@@ -100,6 +100,7 @@ export class Page extends BasePage {
     try {
       result = await sendCommandFull('navigate', {
         url,
+        ...(options?.waitUntil && { waitUntil: options.waitUntil }),
         ...this._cmdOpts(),
       });
     } catch (err) {
@@ -112,6 +113,7 @@ export class Page extends BasePage {
       this._page = undefined;
       result = await sendCommandFull('navigate', {
         url,
+        ...(options?.waitUntil && { waitUntil: options.waitUntil }),
         ...this._cmdOpts(),
       });
     }
