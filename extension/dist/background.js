@@ -265,6 +265,7 @@ var frameTargetKeys = /* @__PURE__ */ new Map();
 var frameTargetCleanupRegistered = false;
 var sessionToTab = /* @__PURE__ */ new Map();
 var sessionToFrameUrl = /* @__PURE__ */ new Map();
+var sessionToFrameId = /* @__PURE__ */ new Map();
 var sessionToParent = /* @__PURE__ */ new Map();
 var armedChildSessions = /* @__PURE__ */ new Map();
 var MAX_CHILD_SESSIONS_PER_TAB = 50;
@@ -382,6 +383,49 @@ function isStaticAssetContentType(ct) {
 	return t === "text/css" || t === "text/javascript" || t === "application/javascript" || t === "application/x-javascript" || t === "application/ecmascript" || t === "application/font-woff" || t === "application/font-woff2" || t === "application/x-font-ttf" || t === "application/vnd.ms-fontobject";
 }
 var uiCaptures = /* @__PURE__ */ new Map();
+var consoleCaptures = /* @__PURE__ */ new Map();
+var MAX_CONSOLE_MESSAGES = 500;
+var MAX_CONSOLE_TEXT = 8192;
+function consoleArgumentText(arg) {
+	const value = arg?.value;
+	if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") return String(value).slice(0, MAX_CONSOLE_TEXT);
+	if (typeof arg?.unserializableValue === "string") return arg.unserializableValue.slice(0, MAX_CONSOLE_TEXT);
+	return typeof arg?.description === "string" ? arg.description.slice(0, MAX_CONSOLE_TEXT) : "";
+}
+function recordConsoleEvent(tabId, sessionId, method, params) {
+	const state = consoleCaptures.get(tabId);
+	if (!state || sessionId && sessionToTab.get(sessionId) !== tabId) return;
+	const exception = method === "Runtime.exceptionThrown";
+	const detail = params?.exceptionDetails;
+	const frame = exception ? detail : params?.stackTrace?.callFrames?.[0];
+	const text = exception ? String(detail?.exception?.description ?? detail?.text ?? "Unknown exception").slice(0, MAX_CONSOLE_TEXT) : (Array.isArray(params?.args) ? params.args.slice(0, 50).map(consoleArgumentText).join(" ") : "").slice(0, MAX_CONSOLE_TEXT);
+	const seq = ++state.seq;
+	const message = {
+		id: `${state.id}:${seq}`,
+		seq,
+		type: exception ? "error" : params?.type === "warn" ? "warning" : String(params?.type ?? "log").slice(0, 100),
+		text,
+		timestamp: typeof params?.timestamp === "number" && Number.isFinite(params.timestamp) && params.timestamp > 0 ? params.timestamp : Date.now()
+	};
+	if (typeof frame?.url === "string") message.url = maskUrlAuthTokens(frame.url.slice(0, MAX_CONSOLE_TEXT));
+	if (typeof frame?.lineNumber === "number") message.lineNumber = frame.lineNumber;
+	if (typeof frame?.columnNumber === "number") message.columnNumber = frame.columnNumber;
+	const contextId = exception ? detail?.executionContextId : params?.executionContextId;
+	if (typeof contextId === "number") message.executionContextId = contextId;
+	if (sessionId) {
+		message.frameSessionId = sessionId;
+		const url = sessionToFrameUrl.get(sessionId);
+		if (url) message.frameUrl = url.slice(0, MAX_CONSOLE_TEXT);
+	}
+	state.messages.push(message);
+	if (state.messages.length > MAX_CONSOLE_MESSAGES) state.messages.shift();
+}
+async function consoleMessages(tabId, level = "all") {
+	await ensureAttached(tabId);
+	const state = consoleCaptures.get(tabId);
+	if (!state?.enabled) throw new Error(`Console capture could not enable Runtime: ${state?.error ?? "Debugger disconnected"}`);
+	return state.messages.filter((message) => level === "all" || message.type === level || level === "error" && message.type === "warning").map((message) => ({ ...message }));
+}
 /** Check if a URL can be attached via CDP — only allow http(s) and blank pages. */
 function isDebuggableUrl$1(url) {
 	if (!url) return true;
@@ -447,9 +491,21 @@ async function ensureAttached(tabId, aggressiveRetry = false) {
 		throw new Error(`attach failed: ${lastError}${hint}`);
 	}
 	attached.add(tabId);
+	const consoleState = {
+		id: crypto.randomUUID(),
+		seq: 0,
+		messages: [],
+		enabled: false,
+		error: void 0
+	};
+	consoleCaptures.set(tabId, consoleState);
 	try {
 		await chrome.debugger.sendCommand({ tabId }, "Runtime.enable");
-	} catch {}
+		consoleState.enabled = true;
+	} catch (error) {
+		consoleState.error = error instanceof Error ? error.message : String(error);
+	}
+	await enableIframeAutoAttach(tabId);
 }
 async function evaluate(tabId, expression, aggressiveRetry = false) {
 	const MAX_EVAL_RETRIES = aggressiveRetry ? 3 : 2;
@@ -672,7 +728,7 @@ async function ensureFrameTarget(tabId, frameId, aggressiveRetry = false, target
 	const existing = frameTargets.get(key);
 	if (existing) return existing;
 	await chrome.debugger.sendCommand({ tabId }, "Target.setDiscoverTargets", { discover: true }).catch(() => {});
-	const captureActive = networkCaptures.has(tabId) || uiCaptures.has(tabId);
+	const captureActive = networkCaptures.has(tabId) || uiCaptures.has(tabId) || consoleCaptures.has(tabId);
 	await chrome.debugger.sendCommand({ tabId }, "Target.setAutoAttach", {
 		autoAttach: true,
 		waitForDebuggerOnStart: captureActive,
@@ -832,10 +888,19 @@ async function armChildSession(tabId, sessionId) {
 	if (st.overCap) return;
 	sessionToTab.set(sessionId, tabId);
 	const child = childDebuggee(tabId, sessionId);
+	const generation = tabCaptureGeneration.get(tabId) ?? 0;
+	const isCurrent = () => (tabCaptureGeneration.get(tabId) ?? 0) === generation && armedChildSessions.get(tabId) === states && states.get(sessionId) === st;
 	try {
 		if (!st.autoAttach) {
 			if (await sendSafe(child, "Target.setAutoAttach", { ...AUTO_ATTACH_IFRAME_PARAMS })) st.autoAttach = true;
 		}
+		if (!isCurrent()) return;
+		if (consoleCaptures.has(tabId) && !st.console) {
+			const pageEnabled = await sendSafe(child, "Page.enable", {});
+			if (!isCurrent()) return;
+			if (await sendSafe(child, "Runtime.enable", {}) && pageEnabled) st.console = true;
+		}
+		if (!isCurrent()) return;
 		if (networkCaptures.has(tabId) && !st.network) {
 			if (await sendSafe(child, "Network.enable", {})) st.network = true;
 		}
@@ -1166,6 +1231,7 @@ function clearChildSessionsForTab(tabId) {
 		for (const sid of states.keys()) {
 			sessionToTab.delete(sid);
 			sessionToFrameUrl.delete(sid);
+			sessionToFrameId.delete(sid);
 			sessionToParent.delete(sid);
 		}
 		armedChildSessions.delete(tabId);
@@ -1175,6 +1241,7 @@ async function detach(tabId) {
 	clearFrameTargetsForTab(tabId);
 	clearChildSessionsForTab(tabId);
 	networkCaptures.delete(tabId);
+	consoleCaptures.delete(tabId);
 	imaReaderCaptureTabs.delete(tabId);
 	imaReaderRequestUrls.delete(tabId);
 	uiCaptures.delete(tabId);
@@ -1190,6 +1257,7 @@ function registerListeners() {
 	chrome.tabs.onRemoved.addListener((tabId) => {
 		attached.delete(tabId);
 		networkCaptures.delete(tabId);
+		consoleCaptures.delete(tabId);
 		imaReaderCaptureTabs.delete(tabId);
 		imaReaderRequestUrls.delete(tabId);
 		uiCaptures.delete(tabId);
@@ -1202,6 +1270,7 @@ function registerListeners() {
 		if (source.tabId) {
 			attached.delete(source.tabId);
 			networkCaptures.delete(source.tabId);
+			consoleCaptures.delete(source.tabId);
 			imaReaderCaptureTabs.delete(source.tabId);
 			imaReaderRequestUrls.delete(source.tabId);
 			uiCaptures.delete(source.tabId);
@@ -1227,6 +1296,7 @@ function registerListeners() {
 				return;
 			}
 			if (typeof ap.targetInfo.url === "string") sessionToFrameUrl.set(childSessionId, maskUrlAuthTokens(ap.targetInfo.url));
+			if (typeof ap.targetInfo.targetId === "string") sessionToFrameId.set(childSessionId, ap.targetInfo.targetId);
 			sessionToParent.set(childSessionId, sessionIdOf(source) ?? "");
 			await armChildSession(parentTabId, childSessionId);
 			return;
@@ -1237,6 +1307,7 @@ function registerListeners() {
 				const owner = sessionToTab.get(sid);
 				sessionToTab.delete(sid);
 				sessionToFrameUrl.delete(sid);
+				sessionToFrameId.delete(sid);
 				sessionToParent.delete(sid);
 				if (owner !== void 0) armedChildSessions.get(owner)?.delete(sid);
 			}
@@ -1244,14 +1315,25 @@ function registerListeners() {
 		}
 		if (method === "Target.targetInfoChanged") {
 			const ti = params?.targetInfo;
-			const sid = sessionIdOf(source);
-			if (sid && ti?.type === "iframe" && typeof ti.url === "string" && ti.url) sessionToFrameUrl.set(sid, maskUrlAuthTokens(ti.url));
+			const eventTabId = source.tabId ?? sessionToTab.get(sessionIdOf(source) ?? "");
+			if (ti?.targetId && ti.type === "iframe" && typeof ti.url === "string" && ti.url) {
+				for (const [child, frameId] of sessionToFrameId) if (frameId === ti.targetId && sessionToTab.get(child) === eventTabId) sessionToFrameUrl.set(child, maskUrlAuthTokens(ti.url));
+			}
 			return;
 		}
 		const eventSessionId = sessionIdOf(source);
 		const tabId = source.tabId ?? (eventSessionId ? sessionToTab.get(eventSessionId) : void 0);
 		if (!tabId) return;
 		const sessionId = eventSessionId;
+		if (method === "Page.frameNavigated" && sessionId && sessionToTab.get(sessionId) === tabId) {
+			const frame = params?.frame;
+			if (frame?.id === sessionToFrameId.get(sessionId) && typeof frame?.url === "string") sessionToFrameUrl.set(sessionId, maskUrlAuthTokens(frame.url));
+			return;
+		}
+		if (method === "Runtime.consoleAPICalled" || method === "Runtime.exceptionThrown") {
+			recordConsoleEvent(tabId, sessionId, method, params);
+			return;
+		}
 		if (method === "Runtime.bindingCalled") {
 			const bp = params;
 			if (bp?.name === IMA_READER_AUTH_BINDING) {
@@ -1733,7 +1815,11 @@ function constrainOwnedWindowBounds(window, area) {
 }
 //#endregion
 //#region src/background.ts
-var EXTENSION_CAPABILITIES = ["focus-window-v1", "ima-reader-v1"];
+var EXTENSION_CAPABILITIES = [
+	"focus-window-v1",
+	"ima-reader-v1",
+	"console-capture-v1"
+];
 var ws = null;
 var reconnectTimer = null;
 var reconnectAttempts = 0;
@@ -2686,6 +2772,7 @@ async function handleCommand(cmd) {
 			case "bind": return await handleBind(cmd, leaseKey);
 			case "network-capture-start": return await handleNetworkCaptureStart(cmd, leaseKey);
 			case "network-capture-read": return await handleNetworkCaptureRead(cmd, leaseKey);
+			case "console-messages": return await handleConsoleMessages(cmd, leaseKey);
 			case "ima-auth-start": return await handleImaAuthStart(cmd, leaseKey);
 			case "ima-auth-read": return await handleImaAuthRead(cmd, leaseKey);
 			case "ima-reader-request": return await handleImaReaderRequest(cmd, leaseKey);
@@ -3511,6 +3598,10 @@ async function handleNetworkCaptureRead(cmd, leaseKey) {
 			errorCode: errorCodeOf(err)
 		};
 	}
+}
+async function handleConsoleMessages(cmd, leaseKey) {
+	const tabId = await resolveTabId(await resolveCommandTabId(cmd), leaseKey);
+	return pageScopedResult(cmd.id, tabId, await consoleMessages(tabId, cmd.level));
 }
 async function handleImaAuthStart(cmd, leaseKey) {
 	const tabId = await resolveTabId(await resolveCommandTabId(cmd), leaseKey);

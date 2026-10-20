@@ -10,6 +10,13 @@ import {
 } from './extension-capabilities.js';
 
 describe('extension capability negotiation', () => {
+  it('gates console snapshots without changing existing actions', () => {
+    expect(requiredExtensionCapability({ action: 'console-messages' })).toBe('console-capture-v1');
+    expect(missingRequiredExtensionCapability({ action: 'console-messages' }, [])).toBe('console-capture-v1');
+    expect(missingRequiredExtensionCapability({ action: 'console-messages' }, ['console-capture-v1'])).toBeUndefined();
+    expect(extensionCapabilityHint('console-capture-v1')).toMatch(/console.*capture/i);
+    expect(requiredExtensionCapability({ action: 'exec' })).toBeUndefined();
+  });
   it('uses a non-conflict HTTP status for missing capabilities', () => {
     expect(EXTENSION_CAPABILITY_MISSING_HTTP_STATUS).toBe(412);
   });

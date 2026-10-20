@@ -7,7 +7,7 @@
 
 declare const __BYCLI_COMPAT_RANGE__: string;
 
-const EXTENSION_CAPABILITIES = ['focus-window-v1', 'ima-reader-v1'] as const;
+const EXTENSION_CAPABILITIES = ['focus-window-v1', 'ima-reader-v1', 'console-capture-v1'] as const;
 
 import type { Command, Result } from './protocol';
 import { DAEMON_HOST, DAEMON_PORT, DAEMON_WS_URL, DAEMON_PING_URL, WS_RECONNECT_BASE_DELAY, WS_RECONNECT_MAX_DELAY } from './protocol';
@@ -1236,6 +1236,8 @@ async function handleCommand(cmd: Command): Promise<Result> {
         return await handleNetworkCaptureStart(cmd, leaseKey);
       case 'network-capture-read':
         return await handleNetworkCaptureRead(cmd, leaseKey);
+      case 'console-messages':
+        return await handleConsoleMessages(cmd, leaseKey);
       case 'ima-auth-start':
         return await handleImaAuthStart(cmd, leaseKey);
       case 'ima-auth-read':
@@ -2145,6 +2147,12 @@ async function handleNetworkCaptureRead(cmd: Command, leaseKey: string): Promise
   } catch (err) {
     return { id: cmd.id, ok: false, error: err instanceof Error ? err.message : String(err), errorCode: errorCodeOf(err) };
   }
+}
+
+async function handleConsoleMessages(cmd: Command, leaseKey: string): Promise<Result> {
+  const cmdTabId = await resolveCommandTabId(cmd);
+  const tabId = await resolveTabId(cmdTabId, leaseKey);
+  return pageScopedResult(cmd.id, tabId, await executor.consoleMessages(tabId, cmd.level));
 }
 
 async function handleImaAuthStart(cmd: Command, leaseKey: string): Promise<Result> {

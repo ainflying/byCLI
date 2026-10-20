@@ -25,10 +25,12 @@ const sessionToTab = new Map<string, number>();
 // childSessionId → 该 iframe 文档 URL(已脱敏,取自 Target.attachedToTarget 的 targetInfo.url,
 // 100% 可靠、不依赖注入脚本)。给子 session 的 network entry / UI event 打 frameUrl 标来源。
 const sessionToFrameUrl = new Map<string, string>();
+// OOPIF target IDs identify the child document frame for Page.frameNavigated.
+const sessionToFrameId = new Map<string, string>();
 // childSessionId → 父 session id(顶层 attach 的子 session 父为 undefined → 记 ''(top))。
 // embedded_iframe 噪音过滤要从目标 iframe 的 frameSessionId 沿父链收 descendants(嵌套 OOPIF 真实 API 不丢)。
 const sessionToParent = new Map<string, string>();
-type ChildArmState = { autoAttach: boolean; network: boolean; ui: boolean; overCap: boolean };
+type ChildArmState = { autoAttach: boolean; network: boolean; ui: boolean; overCap: boolean; console?: boolean };
 const armedChildSessions = new Map<number, Map<string, ChildArmState>>();
 // 背压:广告站可能有几十个 iframe,每 tab 纳管的子 session 数设上限,超限只放行不武装。
 const MAX_CHILD_SESSIONS_PER_TAB = 50;
@@ -225,6 +227,61 @@ function isStaticAssetContentType(ct: string | undefined): boolean {
 // UI 节点录制(M-UI-1):per-tab 用户事件 ring-cap buffer + 累计 dropped 计数。
 interface UiCaptureState { events: UserActionEvent[]; dropped: number }
 const uiCaptures = new Map<number, UiCaptureState>();
+
+interface ConsoleMessage {
+  id: string; seq: number; type: string; text: string; timestamp: number;
+  url?: string; lineNumber?: number; columnNumber?: number; executionContextId?: number;
+  frameSessionId?: string; frameUrl?: string;
+}
+const consoleCaptures = new Map<number, { id: string; seq: number; messages: ConsoleMessage[]; enabled: boolean; error?: string }>();
+const MAX_CONSOLE_MESSAGES = 500;
+const MAX_CONSOLE_TEXT = 8192;
+
+// Only use values already serialized by CDP; never inspect remote objects or run getters.
+function consoleArgumentText(arg: { value?: unknown; description?: unknown; unserializableValue?: unknown }): string {
+  const value = arg?.value;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') {
+    return String(value).slice(0, MAX_CONSOLE_TEXT);
+  }
+  if (typeof arg?.unserializableValue === 'string') return arg.unserializableValue.slice(0, MAX_CONSOLE_TEXT);
+  return typeof arg?.description === 'string' ? arg.description.slice(0, MAX_CONSOLE_TEXT) : '';
+}
+
+function recordConsoleEvent(tabId: number, sessionId: string | undefined, method: string, params: any): void {
+  const state = consoleCaptures.get(tabId);
+  if (!state || (sessionId && sessionToTab.get(sessionId) !== tabId)) return;
+  const exception = method === 'Runtime.exceptionThrown';
+  const detail = params?.exceptionDetails;
+  const frame = exception ? detail : params?.stackTrace?.callFrames?.[0];
+  const text = exception
+    ? String(detail?.exception?.description ?? detail?.text ?? 'Unknown exception').slice(0, MAX_CONSOLE_TEXT)
+    : (Array.isArray(params?.args) ? params.args.slice(0, 50).map(consoleArgumentText).join(' ') : '').slice(0, MAX_CONSOLE_TEXT);
+  const seq = ++state.seq;
+  const message: ConsoleMessage = {
+    id: `${state.id}:${seq}`, seq,
+    type: exception ? 'error' : params?.type === 'warn' ? 'warning' : String(params?.type ?? 'log').slice(0, 100), text,
+    timestamp: typeof params?.timestamp === 'number' && Number.isFinite(params.timestamp) && params.timestamp > 0 ? params.timestamp : Date.now(),
+  };
+  if (typeof frame?.url === 'string') message.url = maskUrlAuthTokens(frame.url.slice(0, MAX_CONSOLE_TEXT));
+  if (typeof frame?.lineNumber === 'number') message.lineNumber = frame.lineNumber;
+  if (typeof frame?.columnNumber === 'number') message.columnNumber = frame.columnNumber;
+  const contextId = exception ? detail?.executionContextId : params?.executionContextId;
+  if (typeof contextId === 'number') message.executionContextId = contextId;
+  if (sessionId) {
+    message.frameSessionId = sessionId;
+    const url = sessionToFrameUrl.get(sessionId); if (url) message.frameUrl = url.slice(0, MAX_CONSOLE_TEXT);
+  }
+  state.messages.push(message);
+  if (state.messages.length > MAX_CONSOLE_MESSAGES) state.messages.shift();
+}
+
+export async function consoleMessages(tabId: number, level: string = 'all'): Promise<ConsoleMessage[]> {
+  await ensureAttached(tabId);
+  const state = consoleCaptures.get(tabId);
+  if (!state?.enabled) throw new Error(`Console capture could not enable Runtime: ${state?.error ?? 'Debugger disconnected'}`);
+  return state.messages.filter(message => level === 'all'
+    || message.type === level || (level === 'error' && message.type === 'warning')).map(message => ({ ...message }));
+}
 /** Check if a URL can be attached via CDP — only allow http(s) and blank pages. */
 function isDebuggableUrl(url?: string): boolean {
   if (!url) return true;  // empty/undefined = tab still loading, allow it
@@ -315,11 +372,18 @@ export async function ensureAttached(tabId: number, aggressiveRetry: boolean = f
   }
   attached.add(tabId);
 
+  // Runtime.enable replays existing messages synchronously; state and listeners must exist first.
+  const consoleState = { id: crypto.randomUUID(), seq: 0, messages: [], enabled: false, error: undefined as string | undefined };
+  consoleCaptures.set(tabId, consoleState);
+
   try {
     await chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
-  } catch {
+    consoleState.enabled = true;
+  } catch (error) {
+    consoleState.error = error instanceof Error ? error.message : String(error);
     // Some pages may not need explicit enable
   }
+  await enableIframeAutoAttach(tabId);
 }
 
 export async function evaluate(tabId: number, expression: string, aggressiveRetry: boolean = false): Promise<unknown> {
@@ -641,7 +705,7 @@ async function ensureFrameTarget(
   // 若该 tab 正在 capture,flat autoAttach 已用 waitForDebuggerOnStart:true 武装子 session;
   // 这里不要 downgrade 成 false(会破坏 capture 的子 session 暂停/武装时序)。capture 不活跃时
   // 维持旧行为(false:per-frame exec 不需要暂停子 target)。
-  const captureActive = networkCaptures.has(tabId) || uiCaptures.has(tabId);
+  const captureActive = networkCaptures.has(tabId) || uiCaptures.has(tabId) || consoleCaptures.has(tabId);
   await chrome.debugger.sendCommand({ tabId }, 'Target.setAutoAttach', {
     autoAttach: true,
     waitForDebuggerOnStart: captureActive,
@@ -873,11 +937,22 @@ async function armChildSession(tabId: number, sessionId: string): Promise<void> 
   if (st.overCap) return; // over-cap session 永不武装(持久短路,堵 rearm 漏洞)
   sessionToTab.set(sessionId, tabId);
   const child = childDebuggee(tabId, sessionId);
+  const generation = tabCaptureGeneration.get(tabId) ?? 0;
+  const isCurrent = () => (tabCaptureGeneration.get(tabId) ?? 0) === generation
+    && armedChildSessions.get(tabId) === states && states.get(sessionId) === st;
   try {
     if (!st.autoAttach) {
       // 级联:子 session 也自动 attach 它内部的 iframe(嵌套 OOPIF)。
       if (await sendSafe(child, 'Target.setAutoAttach', { ...AUTO_ATTACH_IFRAME_PARAMS })) st.autoAttach = true;
     }
+    if (!isCurrent()) return;
+    if (consoleCaptures.has(tabId) && !st.console) {
+      // The initial Target URL may be blank. Page events supply the document URL before its scripts run.
+      const pageEnabled = await sendSafe(child, 'Page.enable', {});
+      if (!isCurrent()) return;
+      if ((await sendSafe(child, 'Runtime.enable', {})) && pageEnabled) st.console = true;
+    }
+    if (!isCurrent()) return;
     if (networkCaptures.has(tabId) && !st.network) {
       if (await sendSafe(child, 'Network.enable', {})) st.network = true;
     }
@@ -1258,7 +1333,7 @@ function clearChildSessionsForTab(tabId: number): void {
   tabCaptureGeneration.set(tabId, (tabCaptureGeneration.get(tabId) ?? 0) + 1);
   const states = armedChildSessions.get(tabId);
   if (states) {
-    for (const sid of states.keys()) { sessionToTab.delete(sid); sessionToFrameUrl.delete(sid); sessionToParent.delete(sid); }
+    for (const sid of states.keys()) { sessionToTab.delete(sid); sessionToFrameUrl.delete(sid); sessionToFrameId.delete(sid); sessionToParent.delete(sid); }
     armedChildSessions.delete(tabId);
   }
 }
@@ -1268,6 +1343,7 @@ export async function detach(tabId: number): Promise<void> {
   clearFrameTargetsForTab(tabId);
   clearChildSessionsForTab(tabId);
   networkCaptures.delete(tabId);
+  consoleCaptures.delete(tabId);
   imaReaderCaptureTabs.delete(tabId);
   imaReaderRequestUrls.delete(tabId);
   uiCaptures.delete(tabId);
@@ -1282,6 +1358,7 @@ export function registerListeners(): void {
   chrome.tabs.onRemoved.addListener((tabId) => {
     attached.delete(tabId);
     networkCaptures.delete(tabId);
+    consoleCaptures.delete(tabId);
     imaReaderCaptureTabs.delete(tabId);
     imaReaderRequestUrls.delete(tabId);
   uiCaptures.delete(tabId);
@@ -1294,6 +1371,7 @@ export function registerListeners(): void {
     if (source.tabId) {
       attached.delete(source.tabId);
       networkCaptures.delete(source.tabId);
+      consoleCaptures.delete(source.tabId);
       imaReaderCaptureTabs.delete(source.tabId);
       imaReaderRequestUrls.delete(source.tabId);
       uiCaptures.delete(source.tabId);
@@ -1314,7 +1392,7 @@ export function registerListeners(): void {
   chrome.debugger.onEvent.addListener(async (source, method, params) => {
     // OOPIF:flat autoAttach 出来的 iframe 子 session 纳管(source 是父 session)。
     if (method === 'Target.attachedToTarget') {
-      const ap = params as { sessionId?: string; targetInfo?: { type?: string; url?: string } } | undefined;
+      const ap = params as { sessionId?: string; targetInfo?: { targetId?: string; type?: string; url?: string } } | undefined;
       const childSessionId = ap?.sessionId;
       const parentTabId = source.tabId;
       if (!childSessionId || !parentTabId) return;
@@ -1327,6 +1405,7 @@ export function registerListeners(): void {
       if (typeof ap.targetInfo.url === 'string') {
         sessionToFrameUrl.set(childSessionId, maskUrlAuthTokens(ap.targetInfo.url));
       }
+      if (typeof ap.targetInfo.targetId === 'string') sessionToFrameId.set(childSessionId, ap.targetInfo.targetId);
       // 父 session:顶层 attach 的 iframe 父为 undefined(记 ''=top);嵌套 OOPIF 父为外层 iframe 的 session。
       sessionToParent.set(childSessionId, sessionIdOf(source) ?? '');
       await armChildSession(parentTabId, childSessionId);
@@ -1339,6 +1418,7 @@ export function registerListeners(): void {
         const owner = sessionToTab.get(sid);
         sessionToTab.delete(sid);
         sessionToFrameUrl.delete(sid);
+        sessionToFrameId.delete(sid);
         sessionToParent.delete(sid);
         if (owner !== undefined) armedChildSessions.get(owner)?.delete(sid);
       }
@@ -1347,12 +1427,14 @@ export function registerListeners(): void {
     // OOPIF 在文档导航完成前就 attach,attachedToTarget 那刻 targetInfo.url 常为空。
     // 文档落地后 Chrome 发 targetInfoChanged 带真实 URL → 回填 sessionToFrameUrl,让目标 frame 精确匹配/ambiguous 可用。
     if (method === 'Target.targetInfoChanged') {
-      const cp = params as { targetInfo?: { type?: string; url?: string } } | undefined;
+      const cp = params as { targetInfo?: { targetId?: string; type?: string; url?: string } } | undefined;
       const ti = cp?.targetInfo;
-      // flat 模型下该事件的子 session id 在 source 上(顶层 targetInfoChanged 无 sessionId,跳过)。
-      const sid = sessionIdOf(source);
-      if (sid && ti?.type === 'iframe' && typeof ti.url === 'string' && ti.url) {
-        sessionToFrameUrl.set(sid, maskUrlAuthTokens(ti.url));
+      // The source session receives Target events for its children; targetInfo identifies the changed frame.
+      const eventTabId = source.tabId ?? sessionToTab.get(sessionIdOf(source) ?? '');
+      if (ti?.targetId && ti.type === 'iframe' && typeof ti.url === 'string' && ti.url) {
+        for (const [child, frameId] of sessionToFrameId) {
+          if (frameId === ti.targetId && sessionToTab.get(child) === eventTabId) sessionToFrameUrl.set(child, maskUrlAuthTokens(ti.url));
+        }
       }
       return;
     }
@@ -1363,6 +1445,17 @@ export function registerListeners(): void {
       ?? (eventSessionId ? sessionToTab.get(eventSessionId) : undefined);
     if (!tabId) return;
     const sessionId = eventSessionId;
+    if (method === 'Page.frameNavigated' && sessionId && sessionToTab.get(sessionId) === tabId) {
+      const frame = (params as { frame?: { id?: string; url?: string } } | undefined)?.frame;
+      if (frame?.id === sessionToFrameId.get(sessionId) && typeof frame?.url === 'string') {
+        sessionToFrameUrl.set(sessionId, maskUrlAuthTokens(frame.url));
+      }
+      return;
+    }
+    if (method === 'Runtime.consoleAPICalled' || method === 'Runtime.exceptionThrown') {
+      recordConsoleEvent(tabId, sessionId, method, params);
+      return;
+    }
     // UI 录制(M-UI-1):注入脚本调 window.__bycli_ui → Runtime.bindingCalled。先于 network 守卫处理。
     if (method === 'Runtime.bindingCalled') {
       const bp = params as { name?: string; payload?: string } | undefined;

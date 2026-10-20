@@ -2189,6 +2189,37 @@ describe('browser console command', () => {
     expect(out.count).toBe(1);
     expect(out.messages[0]).toMatchObject({ type: 'error', text: 'boom' });
   });
+
+  it('applies since and until and redacts console text and source URLs before JSON output', async () => {
+    const now = Date.now();
+    (browserState.page!.consoleMessages as any).mockResolvedValue([
+      { id: '1', type: 'error', text: 'token=private Bearer abc123', timestamp: now - 20_000, url: 'http://fixture.test/?token=private' },
+      { id: '2', type: 'log', text: 'too new', timestamp: now },
+      { id: '3', type: 'warning', text: 'too old', timestamp: now - 120_000 },
+    ]);
+    await createProgram('', '').parseAsync(['node', 'bycli', 'browser', '--session', 'test', 'console', '--since', '60s', '--until', '10s']);
+    const out = lastJsonLog();
+    expect(out.count).toBe(1); expect(JSON.stringify(out)).not.toContain('private'); expect(JSON.stringify(out)).not.toContain('abc123');
+    expect(out.messages[0].text).toContain('[REDACTED]');
+  });
+
+  it('follows stable IDs without losing new messages sharing a timestamp and redacts JSON lines', async () => {
+    vi.useFakeTimers();
+    const ts = Date.now();
+    const a = { id: 'capture:1', seq: 1, type: 'log', text: 'token=first', timestamp: ts };
+    const b = { id: 'capture:2', seq: 2, type: 'log', text: 'token=second', timestamp: ts };
+    let reads = 0;
+    (browserState.page!.consoleMessages as any).mockImplementation(async () => {
+      reads++; if (reads === 1) return [a]; if (reads === 2) return [a, b]; throw new Error('fixture stop');
+    });
+    try {
+      const running = createProgram('', '').parseAsync(['node', 'bycli', 'browser', '--session', 'test', 'console', '--follow']);
+      await vi.advanceTimersByTimeAsync(2200); await running;
+      const lines = consoleLogSpy.mock.calls.map(call => JSON.parse(String(call[0]))).filter(line => line.id);
+      expect(lines.map(line => line.id)).toEqual(['capture:1', 'capture:2']);
+      expect(lines.every(line => line.text === 'token=[REDACTED]')).toBe(true);
+    } finally { vi.useRealTimers(); process.exitCode = undefined; }
+  });
 });
 
 describe('browser get html command', () => {

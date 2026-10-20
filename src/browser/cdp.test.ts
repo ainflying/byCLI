@@ -3,10 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const { MockWebSocket } = vi.hoisted(() => {
   class MockWebSocket {
     static OPEN = 1;
+    static instances: MockWebSocket[] = [];
     readyState = 1;
     private handlers = new Map<string, Array<(...args: unknown[]) => void>>();
 
     constructor(_url: string) {
+      MockWebSocket.instances.push(this);
       queueMicrotask(() => this.emit('open'));
     }
 
@@ -110,5 +112,46 @@ describe('CDPBridge cookies', () => {
 
     expect(send).toHaveBeenCalledOnce();
     expect(send).toHaveBeenCalledWith('Page.bringToFront');
+  });
+});
+
+describe('CDP console capture', () => {
+  it.each(['explicit-empty', 'explicit-cached', 'remote-empty', 'remote-cached'])('rejects console reads after %s disconnection', async (mode) => {
+    vi.stubEnv('BYCLI_CDP_ENDPOINT', 'ws://127.0.0.1:9222/devtools/page/console-disconnected');
+    const bridge = new CDPBridge();
+    const handlers = new Map<string, (params: unknown) => void>();
+    vi.spyOn(bridge, 'on').mockImplementation((name, fn) => { handlers.set(name, fn); });
+    vi.spyOn(bridge, 'send').mockResolvedValue({});
+    try {
+      const page = await bridge.connect();
+      if (mode.endsWith('cached')) {
+        handlers.get('Runtime.consoleAPICalled')?.({ type: 'log', args: [{ value: 'cached' }], timestamp: 1700000000000 });
+        expect(await page.consoleMessages()).toHaveLength(1);
+      }
+      if (mode.startsWith('explicit')) await bridge.close();
+      else MockWebSocket.instances.at(-1)!.close();
+      await expect(page.consoleMessages()).rejects.toThrow(/CDP connection is not open/);
+    } finally { await bridge.close(); vi.unstubAllEnvs(); }
+  });
+  it('captures replay at enable before the first read and preserves same-millisecond events', async () => {
+    vi.stubEnv('BYCLI_CDP_ENDPOINT', 'ws://127.0.0.1:9222/devtools/page/console');
+    const bridge = new CDPBridge();
+    const handlers = new Map<string, (params: unknown) => void>();
+    vi.spyOn(bridge, 'on').mockImplementation((name, fn) => { handlers.set(name, fn); });
+    vi.spyOn(bridge, 'send').mockImplementation(async (method) => {
+      if (method === 'Runtime.enable') {
+        handlers.get('Runtime.consoleAPICalled')?.({ type: 'warning', timestamp: 1700000000000, args: [{ value: 'early' }] });
+        handlers.get('Runtime.exceptionThrown')?.({ timestamp: 1700000000000, exceptionDetails: { exception: { description: 'Error: boom' } } });
+      }
+      return {};
+    });
+    const page = await bridge.connect();
+    const messages = await page.consoleMessages('error');
+    expect(messages).toMatchObject([{ type: 'warning', text: 'early', timestamp: 1700000000000 }, { type: 'error', text: 'Error: boom' }]);
+    expect(messages[0].id).not.toBe(messages[1].id);
+    expect(await page.consoleMessages('all')).toEqual(messages);
+    expect(await page.consoleMessages('warning')).toEqual([messages[0]]);
+    await bridge.close();
+    vi.unstubAllEnvs();
   });
 });

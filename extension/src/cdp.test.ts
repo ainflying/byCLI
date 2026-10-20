@@ -1134,4 +1134,31 @@ describe('embedded_iframe noise filter (readNetworkCapture/readUiCapture by targ
     const entries = await mod.readNetworkCapture(1, { targetFrameUrl: 'https://juejin.cn/search' });
     expect(entries.map((e) => e.url)).toEqual(['https://juejin.cn/api/x']);
   });
+
+  it('keeps nested target URL updates scoped to the updated frame for network and UI capture', async () => {
+    const { mod, listeners } = await setup(); await mod.startUiCapture(1);
+    await emitFrom(listeners, { tabId: 1 }, 'Target.attachedToTarget', {
+      sessionId: 'S1', targetInfo: { type: 'iframe', targetId: 'T1', url: 'https://outer.test/' },
+    });
+    await emitFrom(listeners, { tabId: 1, sessionId: 'S1' }, 'Target.attachedToTarget', {
+      sessionId: 'S2', targetInfo: { type: 'iframe', targetId: 'T2', url: 'https://inner.test/' },
+    });
+    await emitFrom(listeners, { tabId: 1, sessionId: 'S1' }, 'Target.targetInfoChanged', {
+      targetInfo: { type: 'iframe', targetId: 'T2', url: 'https://inner.test/landed' },
+    });
+    for (const sessionId of ['S1', 'S2']) {
+      await emitFrom(listeners, { tabId: 1, sessionId }, 'Network.requestWillBeSent', {
+        requestId: sessionId, type: 'XHR', request: { url: `https://api.test/${sessionId}`, method: 'GET', headers: {} },
+      });
+      await emitFrom(listeners, { tabId: 1, sessionId }, 'Runtime.bindingCalled', {
+        name: '__bycli_ui', payload: JSON.stringify({ type: 'click', selector: `#${sessionId}`, tag: 'button', ts: 1 }),
+      });
+    }
+    expect(await mod.readNetworkCapture(1)).toMatchObject([
+      { frameSessionId: 'S1', frameUrl: 'https://outer.test/' }, { frameSessionId: 'S2', frameUrl: 'https://inner.test/landed' },
+    ]);
+    expect((await mod.readUiCapture(1)).events).toMatchObject([
+      { frameSessionId: 'S1', frameUrl: 'https://outer.test/' }, { frameSessionId: 'S2', frameUrl: 'https://inner.test/landed' },
+    ]);
+  });
 });

@@ -11,13 +11,14 @@
 
 import type {
   BrowserCookie,
+  BrowserConsoleMessage,
   BrowserDownloadWaitOptions,
   BrowserDownloadWaitResult,
   BrowserEvaluateFunction,
   ScreenshotOptions,
 } from '../types.js';
 import { fetchDaemonStatus, sendCommand, sendCommandFull } from './daemon-client.js';
-import { extensionCapabilityHint, FOCUS_WINDOW_CAPABILITY } from './extension-capabilities.js';
+import { CONSOLE_CAPTURE_CAPABILITY, extensionCapabilityHint, FOCUS_WINDOW_CAPABILITY } from './extension-capabilities.js';
 import { buildEvaluateExpression } from './utils.js';
 import { saveBase64ToFile } from '../utils.js';
 import { generateStealthJs } from './stealth.js';
@@ -230,6 +231,25 @@ export class Page extends BasePage {
       ...this._cmdOpts(),
       ...this._sessionOpts(),
     });
+  }
+
+  async consoleMessages(level: string = 'all'): Promise<BrowserConsoleMessage[]> {
+    const status = await fetchDaemonStatus(this.contextId ? { contextId: this.contextId } : undefined);
+    const hint = extensionCapabilityHint(CONSOLE_CAPTURE_CAPABILITY);
+    if (status?.extensionConnected === true && !status.profileRequired && !status.profileDisconnected
+      && Array.isArray(status.extensionCapabilities) && !status.extensionCapabilities.includes(CONSOLE_CAPTURE_CAPABILITY)) {
+      throw new Error(`Connected Browser Bridge does not advertise ${CONSOLE_CAPTURE_CAPABILITY}. ${hint}`);
+    }
+    try {
+      const data = await sendCommand('console-messages', { ...this._cmdOpts(), level });
+      if (!Array.isArray(data)) throw new Error('Browser Bridge returned an invalid console snapshot.');
+      return data;
+    } catch (err) {
+      if (/unknown action.*console-messages/i.test(err instanceof Error ? err.message : String(err))) {
+        throw new Error(`Browser Bridge does not support ${CONSOLE_CAPTURE_CAPABILITY}. ${hint}`, { cause: err });
+      }
+      throw err;
+    }
   }
 
   /** Release the current browser session lease in the extension */

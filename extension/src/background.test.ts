@@ -727,6 +727,23 @@ describe('background tab isolation', () => {
     vi.unstubAllGlobals();
   });
 
+  it('routes console snapshots only to the bound tab, rejecting a foreign page', async () => {
+    const { chrome } = createChromeMock(); vi.stubGlobal('chrome', chrome);
+    const consoleMessages = vi.fn(async () => [{ type: 'error', text: 'bound error', timestamp: 1700000000000 }]);
+    vi.doMock('./cdp', () => ({ registerListeners: vi.fn(), registerFrameTracking: vi.fn(), consoleMessages }));
+    try {
+      const mod = await import('./background');
+      mod.__test__.setSession(browserKey('dev'), { windowId: 2, owned: false, preferredTabId: 2 });
+      const own = await mod.__test__.handleCommand({ id: 'console-own', action: 'console-messages', session: 'dev', page: 'target-2', level: 'error' });
+      expect(own).toMatchObject({ ok: true, page: 'target-2', data: [{ text: 'bound error' }] });
+      expect(consoleMessages).toHaveBeenCalledWith(2, 'error');
+      const foreign = await mod.__test__.handleCommand({ id: 'console-foreign', action: 'console-messages', session: 'dev', page: 'target-1' });
+      expect(foreign).toMatchObject({ ok: false, errorCode: 'bound_tab_mismatch' });
+      expect(consoleMessages).toHaveBeenCalledTimes(1);
+      expect(chrome.tabs.create).not.toHaveBeenCalled(); expect(chrome.tabs.update).not.toHaveBeenCalled();
+    } finally { vi.doUnmock('./cdp'); }
+  });
+
   it('lists only automation-window web tabs', async () => {
     const { chrome } = createChromeMock();
     vi.stubGlobal('chrome', chrome);
@@ -1866,7 +1883,7 @@ describe('background tab isolation', () => {
     expect(socket.sent.map((message) => JSON.parse(message))).toContainEqual(expect.objectContaining({
       type: 'hello',
       version: 'test-version',
-      capabilities: expect.arrayContaining(['focus-window-v1', 'ima-reader-v1']),
+      capabilities: expect.arrayContaining(['focus-window-v1', 'ima-reader-v1', 'console-capture-v1']),
     }));
   });
 

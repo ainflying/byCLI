@@ -5,6 +5,21 @@
  * instead of `any` for browser interactions.
  */
 
+/** A non-consuming CDP console snapshot entry. Source positions are zero-based. */
+export interface BrowserConsoleMessage {
+  id: string;
+  seq: number;
+  type: string;
+  text: string;
+  timestamp: number;
+  url?: string;
+  lineNumber?: number;
+  columnNumber?: number;
+  executionContextId?: number;
+  frameSessionId?: string;
+  frameUrl?: string;
+}
+
 export interface BrowserCookie {
   name: string;
   value: string;
@@ -121,7 +136,7 @@ export interface IPage {
   newTab?(url?: string): Promise<string | undefined>;
   selectTab(target: number | string): Promise<void>;
   networkRequests(includeStatic?: boolean): Promise<any>;
-  consoleMessages(level?: string): Promise<any>;
+  consoleMessages(level?: string): Promise<any[]>;
   scroll(direction?: string, amount?: number): Promise<void>;
   autoScroll(options?: { times?: number; delayMs?: number }): Promise<void>;
   installInterceptor(pattern: string): Promise<void>;

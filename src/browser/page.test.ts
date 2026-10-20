@@ -22,6 +22,27 @@ vi.mock('../logger.js', () => ({
 
 import { Page } from './page.js';
 
+describe('Page.consoleMessages', () => {
+  beforeEach(() => { fetchDaemonStatusMock.mockReset(); sendCommandMock.mockReset(); });
+  it('reads a dedicated console snapshot from the selected tab and profile', async () => {
+    fetchDaemonStatusMock.mockResolvedValue({ extensionConnected: true, extensionCapabilities: ['console-capture-v1'] });
+    const messages = [{ id: 'capture:1', seq: 1, type: 'error', text: 'boom', timestamp: 1700000000000 }];
+    sendCommandMock.mockResolvedValue(messages);
+    const page = new Page('dev', undefined, 'profile-a'); page.setActivePage('target-a');
+    expect(await page.consoleMessages('error')).toEqual(messages);
+    expect(sendCommandMock).toHaveBeenCalledWith('console-messages', expect.objectContaining({ session: 'dev', page: 'target-a', contextId: 'profile-a', level: 'error' }));
+  });
+  it('explains the required update when the extension lacks console capture', async () => {
+    fetchDaemonStatusMock.mockResolvedValue({ extensionConnected: true, extensionCapabilities: [] });
+    await expect(new Page('dev').consoleMessages()).rejects.toThrow(/console-capture-v1.*update.*reload/i);
+    expect(sendCommandMock).not.toHaveBeenCalled();
+  });
+  it.each(['Unknown action: console-messages', 'Browser connection lost'])('does not disguise %s as an empty snapshot', async (message) => {
+    fetchDaemonStatusMock.mockResolvedValue(null); sendCommandMock.mockRejectedValue(new Error(message));
+    await expect(new Page('dev').consoleMessages()).rejects.toThrow(message.startsWith('Unknown') ? /update.*reload/i : /connection lost/);
+  });
+});
+
 describe('Page.focusWindow', () => {
   beforeEach(() => {
     fetchDaemonStatusMock.mockReset();

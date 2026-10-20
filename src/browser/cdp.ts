@@ -11,7 +11,7 @@
 import { WebSocket, type RawData } from 'ws';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import type { BrowserCookie, BrowserEvaluateFunction, IPage, ScreenshotOptions } from '../types.js';
+import type { BrowserConsoleMessage, BrowserCookie, BrowserEvaluateFunction, IPage, ScreenshotOptions } from '../types.js';
 import type { IBrowserFactory } from '../runtime.js';
 import { buildEvaluateExpression } from './utils.js';
 import { generateStealthJs } from './stealth.js';
@@ -109,7 +109,9 @@ export class CDPBridge implements IBrowserFactory {
       ws.on('open', async () => {
         clearTimeout(timeout);
         this._ws = ws;
+        const page = new CDPPage(this);
         try {
+          await page.enableConsoleCapture();
           await this.send('Page.enable');
           await this.send('Page.addScriptToEvaluateOnNewDocument', { source: generateStealthJs() });
         } catch (err) {
@@ -117,7 +119,7 @@ export class CDPBridge implements IBrowserFactory {
           reject(err instanceof Error ? err : new Error(String(err)));
           return;
         }
-        resolve(new CDPPage(this));
+        resolve(page);
       });
 
       ws.on('error', (err: Error) => {
@@ -165,6 +167,10 @@ export class CDPBridge implements IBrowserFactory {
     }
     this._pending.clear();
     this._eventListeners.clear();
+  }
+
+  assertConnected(): void {
+    if (!this._ws || this._ws.readyState !== WebSocket.OPEN) throw new Error('CDP connection is not open');
   }
 
   async send(method: string, params: Record<string, unknown> = {}, timeoutMs: number = CDP_SEND_TIMEOUT): Promise<unknown> {
@@ -227,11 +233,48 @@ class CDPPage extends BasePage {
   }> = [];
   private _pendingRequests = new Map<string, number>(); // requestId → index in _networkEntries
   private _pendingBodyFetches: Set<Promise<void>> = new Set(); // track in-flight getResponseBody calls
-  private _consoleMessages: Array<{ type: string; text: string; timestamp: number }> = [];
-  private _consoleCapturing = false;
+  private _consoleMessages: BrowserConsoleMessage[] = [];
+  private readonly _consoleCaptureId = crypto.randomUUID();
+  private _consoleSequence = 0;
 
   constructor(private bridge: CDPBridge) {
     super();
+    this.bridge.on('Runtime.consoleAPICalled', params => this.recordConsoleEvent(false, params));
+    this.bridge.on('Runtime.exceptionThrown', params => this.recordConsoleEvent(true, params));
+  }
+
+  async enableConsoleCapture(): Promise<void> {
+    await this.bridge.send('Runtime.enable');
+  }
+
+  private recordConsoleEvent(exception: boolean, raw: unknown): void {
+    const params = raw as { type?: string; timestamp?: number; executionContextId?: number;
+      args?: Array<{ value?: unknown; description?: string; unserializableValue?: string }>;
+      stackTrace?: { callFrames?: Array<{ url?: string; lineNumber?: number; columnNumber?: number }> };
+      exceptionDetails?: { text?: string; exception?: { description?: string }; executionContextId?: number; url?: string; lineNumber?: number; columnNumber?: number };
+    };
+    const limit = 8192;
+    const detail = params?.exceptionDetails;
+    const source = exception ? detail : params?.stackTrace?.callFrames?.[0];
+    const text = exception ? (detail?.exception?.description ?? detail?.text ?? 'Unknown exception').slice(0, limit)
+      : (Array.isArray(params?.args) ? params.args.slice(0, 50).map(arg => {
+        const value = arg?.value;
+        if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') return String(value).slice(0, limit);
+        return (typeof arg?.unserializableValue === 'string' ? arg.unserializableValue : typeof arg?.description === 'string' ? arg.description : '').slice(0, limit);
+      }).join(' ') : '').slice(0, limit);
+    const seq = ++this._consoleSequence;
+    const message: BrowserConsoleMessage = {
+      id: `${this._consoleCaptureId}:${seq}`, seq, text,
+      type: exception ? 'error' : params?.type === 'warn' ? 'warning' : String(params?.type ?? 'log').slice(0, 100),
+      timestamp: typeof params?.timestamp === 'number' && Number.isFinite(params.timestamp) && params.timestamp > 0 ? params.timestamp : Date.now(),
+    };
+    if (typeof source?.url === 'string') message.url = source.url.slice(0, limit);
+    if (typeof source?.lineNumber === 'number') message.lineNumber = source.lineNumber;
+    if (typeof source?.columnNumber === 'number') message.columnNumber = source.columnNumber;
+    const contextId = exception ? detail?.executionContextId : params?.executionContextId;
+    if (typeof contextId === 'number') message.executionContextId = contextId;
+    this._consoleMessages.push(message);
+    if (this._consoleMessages.length > 500) this._consoleMessages.shift();
   }
 
   async goto(url: string, options?: { waitUntil?: 'load' | 'none'; settleMs?: number; allowBoundNavigation?: boolean; guardNavigation?: boolean }): Promise<void> {
@@ -445,28 +488,9 @@ class CDPPage extends BasePage {
     return entries;
   }
 
-  async consoleMessages(level: string = 'all'): Promise<Array<{ type: string; text: string; timestamp: number }>> {
-    if (!this._consoleCapturing) {
-      await this.bridge.send('Runtime.enable');
-      this.bridge.on('Runtime.consoleAPICalled', (params: unknown) => {
-        const p = params as { type: string; args: Array<{ value?: unknown; description?: string }>; timestamp: number };
-        const text = (p.args || []).map(a => a.value !== undefined ? String(a.value) : (a.description || '')).join(' ');
-        this._consoleMessages.push({ type: p.type, text, timestamp: Date.now() });
-        if (this._consoleMessages.length > 500) this._consoleMessages.shift();
-      });
-      // Capture uncaught exceptions as error-level messages
-      this.bridge.on('Runtime.exceptionThrown', (params: unknown) => {
-        const p = params as { timestamp: number; exceptionDetails?: { exception?: { description?: string }; text?: string } };
-        const desc = p.exceptionDetails?.exception?.description || p.exceptionDetails?.text || 'Unknown exception';
-        this._consoleMessages.push({ type: 'error', text: desc, timestamp: Date.now() });
-        if (this._consoleMessages.length > 500) this._consoleMessages.shift();
-      });
-      this._consoleCapturing = true;
-    }
-    if (level === 'all') return [...this._consoleMessages];
-    // 'error' level includes both console.error() and uncaught exceptions
-    if (level === 'error') return this._consoleMessages.filter(m => m.type === 'error' || m.type === 'warning');
-    return this._consoleMessages.filter(m => m.type === level);
+  async consoleMessages(level: string = 'all'): Promise<BrowserConsoleMessage[]> {
+    this.bridge.assertConnected();
+    return this._consoleMessages.filter(m => level === 'all' || m.type === level || (level === 'error' && m.type === 'warning')).map(m => ({ ...m }));
   }
 
   async tabs(): Promise<unknown[]> {

@@ -18,6 +18,7 @@ export type Action =
   | 'bind'
   | 'network-capture-start'
   | 'network-capture-read'
+  | 'console-messages'
   | 'ima-auth-start'
   | 'ima-auth-read'
   | 'ima-reader-request'
@@ -30,6 +31,8 @@ export type Action =
   | 'frames';
 
 export interface Command {
+  /** Console snapshot level; error includes warnings. */
+  level?: string;
   /** Unique request ID */
   id: string;
   /** Action type */
