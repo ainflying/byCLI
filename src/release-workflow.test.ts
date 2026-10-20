@@ -20,6 +20,9 @@ describe('release workflow', () => {
   it('retries an existing tag without publishing the workflow branch as a release', () => {
     const workflow = load(readFileSync('.github/workflows/release.yml', 'utf8')) as any;
     expect(workflow.on.workflow_dispatch.inputs.tag.required).toBe(true);
+    expect(workflow.on.workflow_dispatch.inputs.diagnostics_only.default).toBe(false);
+    expect(workflow.jobs.release.if).toContain('!inputs.diagnostics_only');
+    expect(workflow.jobs['registry-diagnostics'].if).toContain('inputs.diagnostics_only');
     const steps = workflow.jobs.release.steps;
     expect(steps.find((step: any) => step.uses === 'actions/checkout@v6').with.ref)
       .toBe('${{ inputs.tag || github.ref }}');
