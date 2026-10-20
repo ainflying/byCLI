@@ -29601,6 +29601,131 @@
   },
   {
     "site": "weibo",
+    "name": "article-download",
+    "description": "Download a Weibo long article as Markdown or JSON",
+    "access": "read",
+    "domain": "weibo.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "Weibo article ID, mblogid, or URL"
+      },
+      {
+        "name": "output",
+        "type": "string",
+        "default": "./weibo-downloads",
+        "required": false,
+        "help": "Output directory"
+      },
+      {
+        "name": "output-format",
+        "type": "string",
+        "default": "md",
+        "required": false,
+        "help": "md or json"
+      }
+    ],
+    "columns": [
+      "id",
+      "mblogid",
+      "url",
+      "title",
+      "format",
+      "path",
+      "bytes"
+    ],
+    "type": "js",
+    "modulePath": "weibo/article-download.js",
+    "sourceFile": "weibo/article-download.js",
+    "navigateBefore": "https://weibo.com"
+  },
+  {
+    "site": "weibo",
+    "name": "article-publish",
+    "description": "Save a Weibo long article draft from offline-prepared HTML (dry-run by default; publishing stays manual)",
+    "access": "write",
+    "domain": "weibo.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "title",
+        "type": "string",
+        "required": true,
+        "help": "Article title (max 32 characters)"
+      },
+      {
+        "name": "summary",
+        "type": "string",
+        "required": false,
+        "help": "Optional lead paragraph (max 44 characters)"
+      },
+      {
+        "name": "content",
+        "type": "string",
+        "required": false,
+        "help": "Inline article content"
+      },
+      {
+        "name": "content-file",
+        "type": "string",
+        "required": false,
+        "help": "HTML or plain-text file; local <img> paths resolve relative to this file"
+      },
+      {
+        "name": "content-format",
+        "type": "string",
+        "required": false,
+        "help": "Content format (default: html for .html/.htm files, otherwise text)",
+        "choices": [
+          "text",
+          "html"
+        ]
+      },
+      {
+        "name": "cover",
+        "type": "string",
+        "required": false,
+        "help": "Cover image path (jpg/png/gif/bmp)"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "help": "Fill the editor and save a draft (never publishes)"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": "Max seconds for the whole run; each body image upload can take up to 90s"
+      }
+    ],
+    "columns": [
+      "status",
+      "draft_id",
+      "title",
+      "content_format",
+      "images",
+      "cover",
+      "warnings",
+      "message",
+      "url"
+    ],
+    "type": "js",
+    "modulePath": "weibo/article-publish.js",
+    "sourceFile": "weibo/article-publish.js",
+    "navigateBefore": true
+  },
+  {
+    "site": "weibo",
     "name": "article-stats",
     "description": "获取微博长文章互动数据",
     "access": "read",
@@ -29624,6 +29749,7 @@
       "author_uid",
       "created_at",
       "content_type",
+      "requested_content_type",
       "reposts",
       "comments",
       "likes",
@@ -29838,6 +29964,84 @@
   },
   {
     "site": "weibo",
+    "name": "image-download",
+    "description": "Download original images from a Weibo post",
+    "access": "read",
+    "domain": "weibo.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "Weibo post ID, mblogid, or URL"
+      },
+      {
+        "name": "output",
+        "type": "string",
+        "default": "./weibo-downloads",
+        "required": false,
+        "help": "Output directory"
+      }
+    ],
+    "columns": [
+      "id",
+      "mblogid",
+      "index",
+      "url",
+      "path",
+      "bytes",
+      "contentType"
+    ],
+    "type": "js",
+    "modulePath": "weibo/image-download.js",
+    "sourceFile": "weibo/image-download.js",
+    "navigateBefore": "https://weibo.com"
+  },
+  {
+    "site": "weibo",
+    "name": "image-publish",
+    "description": "Publish a Weibo image post (dry-run by default)",
+    "access": "write",
+    "domain": "weibo.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "text",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "Post text"
+      },
+      {
+        "name": "images",
+        "type": "string",
+        "required": true,
+        "help": "Image paths, comma-separated (jpg/png/gif/webp)"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "help": "Actually publish after manual confirmation"
+      }
+    ],
+    "columns": [
+      "status",
+      "message",
+      "text"
+    ],
+    "type": "js",
+    "modulePath": "weibo/image-publish.js",
+    "sourceFile": "weibo/image-publish.js",
+    "navigateBefore": true
+  },
+  {
+    "site": "weibo",
     "name": "image-stats",
     "description": "获取图片微博互动数据",
     "access": "read",
@@ -29861,6 +30065,7 @@
       "author_uid",
       "created_at",
       "content_type",
+      "requested_content_type",
       "reposts",
       "comments",
       "likes",
@@ -29959,8 +30164,8 @@
       "text"
     ],
     "type": "js",
-    "modulePath": "weibo/publish.js",
-    "sourceFile": "weibo/publish.js",
+    "modulePath": "weibo/image-publish.js",
+    "sourceFile": "weibo/image-publish.js",
     "navigateBefore": true
   },
   {
@@ -30025,6 +30230,7 @@
       "author_uid",
       "created_at",
       "content_type",
+      "requested_content_type",
       "reposts",
       "comments",
       "likes",
@@ -30174,6 +30380,61 @@
   },
   {
     "site": "weibo",
+    "name": "video-publish",
+    "description": "Publish a Weibo video post (dry-run by default)",
+    "access": "write",
+    "domain": "weibo.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "text",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "Post text (max 2000 characters; the first 30 become the video title)"
+      },
+      {
+        "name": "video",
+        "type": "string",
+        "required": true,
+        "help": "Video path (mp4/mov/m4v/webm)"
+      },
+      {
+        "name": "ai-generated",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "help": "Declare the video as 含AI生成内容. The default declaration is 我的内容无需声明"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "help": "Actually publish after manual confirmation"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 300,
+        "required": false,
+        "help": "Max seconds for the whole run, including video upload"
+      }
+    ],
+    "columns": [
+      "status",
+      "message",
+      "text",
+      "video"
+    ],
+    "type": "js",
+    "modulePath": "weibo/video-publish.js",
+    "sourceFile": "weibo/video-publish.js",
+    "navigateBefore": true
+  },
+  {
+    "site": "weibo",
     "name": "video-stats",
     "description": "获取视频微博互动数据",
     "access": "read",
@@ -30197,6 +30458,7 @@
       "author_uid",
       "created_at",
       "content_type",
+      "requested_content_type",
       "reposts",
       "comments",
       "likes",

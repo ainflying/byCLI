@@ -5,6 +5,7 @@ import { normalizeWeiboTarget, requireObjectEvaluateResult, unwrapEvaluateResult
 
 export const WEIBO_STATS_COLUMNS = [
     'id', 'mblogid', 'url', 'author', 'author_uid', 'created_at', 'content_type',
+    'requested_content_type',
     'reposts', 'comments', 'likes', 'collects', 'views', 'video_plays', 'visibility', 'observed_at',
 ];
 
@@ -22,6 +23,22 @@ export async function runWeiboStats(page, kwargs, contentType = 'short') {
         const s = await resp.json();
         if (!s.ok && !s.idstr && !s.id) return { missing: true };
         const u = s.user || {};
+        const pageInfo = s.page_info || {};
+        const mediaInfo = pageInfo.media_info || {};
+        const hasImages = Number(s.pic_num || Object.keys(s.pic_infos || {}).length || 0) > 0;
+        const hasVideo = Boolean(mediaInfo.mp4_720p_mp4 || mediaInfo.mp4_hd_mp4 || mediaInfo.stream_url || pageInfo.type === 'video');
+        const hasLongText = Boolean(s.isLongText || s.is_long_text || pageInfo.object_type === 'article');
+        // page_info.type is also reported as "article" by some ordinary
+        // image posts. Prefer concrete media and explicit long-text markers;
+        // only use the generic type as a final fallback.
+        const requestedType = ${JSON.stringify(contentType)};
+        const detectedContentType = hasVideo
+            ? 'video'
+            : hasImages
+              ? 'image'
+              : hasLongText && requestedType !== 'image'
+                ? 'article'
+                : (requestedType || 'short');
         return {
           id: String(s.idstr || s.id || id),
           mblogid: s.mblogid || (${JSON.stringify(target.mblogid)}),
@@ -29,7 +46,8 @@ export async function runWeiboStats(page, kwargs, contentType = 'short') {
           author: String(u.screen_name || ''),
           author_uid: String(u.idstr || u.id || ''),
           created_at: String(s.created_at || ''),
-          content_type: ${JSON.stringify(contentType)},
+          content_type: detectedContentType,
+          requested_content_type: ${JSON.stringify(contentType)},
           reposts: Number(s.reposts_count ?? 0),
           comments: Number(s.comments_count ?? 0),
           likes: Number(s.attitudes_count ?? 0),
