@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { ArgumentError, AuthRequiredError, CommandExecutionError, TimeoutError } from '@sovovs/bycli/errors';
-import { fetchTotalData, fetchPosts, fetchPostDetail } from './client.js';
+import { fetchTotalData, fetchPosts, fetchPostDetail, fetchPostMetrics } from './client.js';
 
 const HOST = 'https://channels.weixin.qq.com';
 const PREFIX = `${HOST}/micro/statistic/cgi-bin/mmfinderassistant-bin/statistic/`;
@@ -109,7 +109,7 @@ describe('video channel browser API client', () => {
     try { expect(await fetchPosts(b.page, RANGE, 20)).toEqual([]); } finally { b.close(); }
   });
   it('fetches successive pages and applies the requested limit without losing ids', async () => {
-    const b = browser((name, body) => ({ data: { totalCount: 23, list: Array.from({ length: body.currentPage === 3 ? 3 : 10 }, (_, i) => ({ objectId: String((body.currentPage - 1) * 10 + i + 1) })) } }));
+    const b = browser((name, body) => ({ data: { totalCount: 23, list: Array.from({ length: body.currentPage === 3 ? 3 : 10 }, (_, i) => ({ objectId: String((body.currentPage - 1) * 10 + i + 1), createTime: RANGE.startTs })) } }));
     try {
       const rows = await fetchPosts(b.page, RANGE, 22);
       expect(rows.map(r => r.objectId)).toEqual(Array.from({ length: 22 }, (_, i) => String(i + 1)));
@@ -118,11 +118,33 @@ describe('video channel browser API client', () => {
     } finally { b.close(); }
   });
   it('refuses to return partial results when pagination repeats a page', async () => {
-    const b = browser(() => ({ data: { totalCount: 20, list: Array.from({ length: 10 }, (_, i) => ({ objectId: String(i + 1) })) } }));
+    const b = browser(() => ({ data: { totalCount: 20, list: Array.from({ length: 10 }, (_, i) => ({ objectId: String(i + 1), createTime: RANGE.startTs })) } }));
     try { await expect(fetchPosts(b.page, RANGE, 20)).rejects.toBeInstanceOf(CommandExecutionError); } finally { b.close(); }
   });
+  it('filters publication dates locally and scans later pages before applying the matching limit', async () => {
+    const b = browser((name, body) => ({ data: { totalCount: 20, list: Array.from({ length: 10 }, (_, i) => ({
+      objectId: String((body.currentPage - 1) * 10 + i + 1), createTime: body.currentPage === 1 ? RANGE.endTs + 86400 : RANGE.startTs,
+    })) } }));
+    try {
+      expect((await fetchPosts(b.page, RANGE, 2)).map(p => p.objectId)).toEqual(['11', '12']);
+      expect(b.requests).toHaveLength(2);
+    } finally { b.close(); }
+  });
+  it('returns an empty date-filtered list when only out-of-window works exist', async () => {
+    const b = browser(() => ({ data: { totalCount: 1, list: [{ objectId: '1', createTime: RANGE.endTs + 86400 }] } }));
+    try { expect(await fetchPosts(b.page, RANGE, 20)).toEqual([]); } finally { b.close(); }
+  });
+  it('looks up exact current-video identity independently of settlement dates', async () => {
+    const id = '15035867620425145936';
+    const b = browser(() => ({ data: { totalCount: 1, list: [{ objectId: id, createTime: RANGE.endTs + 86400 }] } }));
+    try { expect((await fetchPostMetrics(b.page, id)).objectId).toBe(id); } finally { b.close(); }
+  });
+  it('does not manufacture current-video metrics when the exact ID is absent', async () => {
+    const b = browser(() => ({ data: { totalCount: 0, list: [] } }));
+    try { await expect(fetchPostMetrics(b.page, '999')).rejects.toMatchObject({ code: 'EMPTY_RESULT' }); } finally { b.close(); }
+  });
   it('refuses a prematurely empty page', async () => {
-    const b = browser((name, body) => ({ data: { totalCount: 20, list: body.currentPage === 1 ? [{ objectId: '1' }] : [] } }));
+    const b = browser((name, body) => ({ data: { totalCount: 20, list: body.currentPage === 1 ? [{ objectId: '1', createTime: RANGE.startTs }] : [] } }));
     try { await expect(fetchPosts(b.page, RANGE, 20)).rejects.toBeInstanceOf(CommandExecutionError); } finally { b.close(); }
   });
   it.each([0, -1, 1.5, Infinity, 1001])('rejects invalid or excessive list limit %s before browser access', async limit => {

@@ -1,3 +1,4 @@
+import { DEEP_QUERY_JS } from './dom-query.js';
 /**
  * `browser find --css <sel>` — structured CSS query.
  *
@@ -112,11 +113,12 @@ export function buildFindJs(selector: string, opts: FindOptions = {}): string {
       const TEXT_MAX = ${textMax};
       const ATTR_WHITELIST = ${whitelist};
 
+      ${DEEP_QUERY_JS}
       ${COMPOUND_INFO_JS}
 
       let matches;
       try {
-        matches = document.querySelectorAll(sel);
+        matches = deepQueryAll(sel);
       } catch (e) {
         return {
           error: {
@@ -172,7 +174,7 @@ export function buildFindJs(selector: string, opts: FindOptions = {}): string {
       // map was cleared but annotations remain (e.g. soft navigation without a
       // fresh snapshot). Guarantees allocated refs don't collide.
       try {
-        const tagged = document.querySelectorAll('[data-bycli-ref]');
+        const tagged = deepQueryAll('[data-bycli-ref]');
         for (let t = 0; t < tagged.length; t++) {
           const v = tagged[t].getAttribute('data-bycli-ref');
           const n = v != null && /^\\d+$/.test(v) ? parseInt(v, 10) : NaN;
@@ -248,6 +250,7 @@ export function buildSemanticFindJs(opts: SemanticFindOptions): string {
       const TEXT_MAX = ${textMax};
       const ATTR_WHITELIST = ${whitelist};
 
+      ${DEEP_QUERY_JS}
       ${COMPOUND_INFO_JS}
 
       function normalize(value) {
@@ -371,7 +374,7 @@ export function buildSemanticFindJs(opts: SemanticFindOptions): string {
         return true;
       }
 
-      const candidates = Array.from(document.querySelectorAll([
+      const candidates = Array.from(deepQueryAll([
         'a[href]',
         'button',
         'input',
@@ -406,7 +409,7 @@ export function buildSemanticFindJs(opts: SemanticFindOptions): string {
         if (!isNaN(n) && n > maxRef) maxRef = n;
       }
       try {
-        const tagged = document.querySelectorAll('[data-bycli-ref]');
+        const tagged = deepQueryAll('[data-bycli-ref]');
         for (let t = 0; t < tagged.length; t++) {
           const v = tagged[t].getAttribute('data-bycli-ref');
           const n = v != null && /^\\d+$/.test(v) ? parseInt(v, 10) : NaN;

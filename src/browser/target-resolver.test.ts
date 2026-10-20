@@ -103,7 +103,7 @@ describe('resolveTargetJs', () => {
     // Reidentify searches live DOM with the same fingerprint shape the
     // snapshot / find writers emit — id / testId / aria-label only.
     expect(js).toContain('function reidentify');
-    expect(js).toContain('getElementById');
+    expect(js).toContain("deepQueryAll('[id]')");
     expect(js).toContain('[data-testid="');
     expect(js).toContain('[aria-label="');
     // Unique match required — never silently picks one of many candidates.

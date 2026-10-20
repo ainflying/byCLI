@@ -8,6 +8,7 @@ import { BrowserCommandError } from './browser/daemon-client.js';
 import type { IPage } from './types.js';
 import { TargetError } from './browser/target-errors.js';
 import { PKG_VERSION } from './version.js';
+import { DEFAULT_BROWSER_COMMAND_TIMEOUT, DEFAULT_BROWSER_CONNECT_TIMEOUT } from './runtime.js';
 
 const {
   mockBrowserConnect,
@@ -797,6 +798,7 @@ describe('browser verify', () => {
       expect(mockExecFileSync).toHaveBeenCalledTimes(1);
       const [, execArgs] = mockExecFileSync.mock.calls[0] as [string, string[]];
       expect(execArgs.slice(-6)).toEqual(['hn', 'top', '--trace', 'retain-on-failure', '--format', 'json']);
+      expect(mockExecFileSync.mock.calls[0]?.[2]).toMatchObject({ timeout: (DEFAULT_BROWSER_CONNECT_TIMEOUT + DEFAULT_BROWSER_COMMAND_TIMEOUT) * 1000 });
     } finally {
       if (originalHome === undefined) delete process.env.HOME;
       else process.env.HOME = originalHome;

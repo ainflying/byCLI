@@ -1,4 +1,4 @@
-import { ArgumentError, AuthRequiredError, CommandExecutionError, TimeoutError } from '@sovovs/bycli/errors';
+import { ArgumentError, AuthRequiredError, CommandExecutionError, EmptyResultError, TimeoutError } from '@sovovs/bycli/errors';
 import { randomUUID } from 'node:crypto';
 
 const DOMAIN = 'channels.weixin.qq.com';
@@ -111,14 +111,16 @@ export async function fetchTotalData(page, range) {
   return request(page, auth, 'new_post_total_data', periodParams(range));
 }
 
-export async function fetchPosts(page, range, limit = 20) {
+async function readPostList(page, range, limit = 20, targetId = null) {
   if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
     throw new ArgumentError('--limit must be an integer between 1 and 1000');
   }
   const auth = await bootstrap(page);
   const rows = [], seen = new Set();
   let expected;
-  for (let currentPage = 1; currentPage <= Math.ceil(limit / 10); currentPage += 1) {
+  // The live service may ignore publication-date filters. Scan full pages and
+  // apply that filter locally; --limit counts matching works, not scanned rows.
+  for (let currentPage = 1; currentPage <= 100; currentPage += 1) {
     const data = await request(page, auth, 'post_list', {
       pageSize: 10, currentPage, sort: 0, order: 0,
       startTime: range.startTs, endTime: range.endTs + 86400,
@@ -126,21 +128,40 @@ export async function fetchPosts(page, range, limit = 20) {
     if (!Array.isArray(data.list) || !Number.isSafeInteger(data.totalCount) || data.totalCount < 0) {
       throw new CommandExecutionError('weixin-channels post_list: unexpected list response');
     }
-    if (expected === undefined) expected = Math.min(data.totalCount, limit);
+    if (expected === undefined) expected = data.totalCount;
     if (expected === 0 && data.list.length === 0) return [];
-    const before = rows.length;
+    const before = seen.size;
     for (const row of data.list) {
       if (typeof row?.objectId !== 'string' || !/^\d+$/.test(row.objectId)) {
         throw new CommandExecutionError('weixin-channels post_list: video id is unavailable');
       }
-      if (!seen.has(row.objectId)) { seen.add(row.objectId); rows.push(row); }
+      if (!seen.has(row.objectId)) {
+        seen.add(row.objectId);
+        if (targetId) { if (row.objectId === targetId) return [row]; continue; }
+        const time = row.createTime;
+        if (!(typeof time === 'number' || typeof time === 'string' && /^\d+$/.test(time)) || !Number.isSafeInteger(Number(time)) || Number(time) < 0) throw new CommandExecutionError('weixin-channels post_list: publication time unavailable');
+        if (Number(time) >= range.startTs && Number(time) < range.endTs + 86400) rows.push(row);
+      }
     }
-    if (rows.length >= expected) return rows.slice(0, expected);
-    if (rows.length === before || data.list.length < 10) {
+    if (rows.length >= limit) return rows.slice(0, limit);
+    if (seen.size >= expected) return rows;
+    if (seen.size === before || data.list.length < 10) {
       throw new CommandExecutionError('weixin-channels post_list: incomplete pagination', 'Retry after the video list finishes updating.');
     }
   }
   throw new CommandExecutionError('weixin-channels post_list: incomplete pagination');
+}
+
+export async function fetchPosts(page, range, limit = 20) {
+  return readPostList(page, range, limit);
+}
+
+export async function fetchPostMetrics(page, id) {
+  if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new ArgumentError('Video statistics ID must be an exact numeric string');
+  // Identity lookup is independent of daily settlement/publication-date filters.
+  const [post] = await readPostList(page, { startTs: 0, endTs: Math.floor(Date.now() / 1000) }, 1000, id);
+  if (!post) throw new EmptyResultError('weixin-channels video-stats', 'Exact video ID not found in the current account');
+  return post;
 }
 
 export async function fetchPostDetail(page, id, range) {

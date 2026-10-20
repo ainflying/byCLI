@@ -28,6 +28,7 @@ const POST_COUNTERS = {
     wecom_contact_adds: 'wecomContactAddCount',
     wecom_contact_visitors: 'wecomContactAddUv',
 };
+export const POST_COUNTER_FIELDS = Object.freeze(Object.values(POST_COUNTERS));
 
 function isRecord(value) {
     return value !== null && typeof value === 'object' && !Array.isArray(value);

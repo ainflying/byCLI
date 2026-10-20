@@ -50,7 +50,7 @@ describe('buildFindJs', () => {
     expect(js).toContain("identity['' + refNum] = fingerprintOf(el)");
     // Allocation walks both the identity map and any existing data-bycli-ref
     // annotations — guards against collisions after a soft nav.
-    expect(js).toContain("document.querySelectorAll('[data-bycli-ref]')");
+    expect(js).toContain("deepQueryAll('[data-bycli-ref]')");
   });
 
   it('fingerprint shape matches the snapshot / resolver contract', () => {
@@ -172,7 +172,7 @@ describe('buildSemanticFindJs', () => {
     expect(js).toContain("el.setAttribute('data-bycli-ref'");
     expect(js).toContain('__bycli_ref_identity');
     expect(js).toContain("identity['' + refNum] = fingerprintOf(el)");
-    expect(js).toContain("document.querySelectorAll('[data-bycli-ref]')");
+    expect(js).toContain("deepQueryAll('[data-bycli-ref]')");
   });
 
   it('executes semantic role/name/testid matching and allocates a clickable ref', () => {

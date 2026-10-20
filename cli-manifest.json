@@ -2025,6 +2025,562 @@
     "sourceFile": "baidu-scholar/search.js"
   },
   {
+    "site": "baijiahao",
+    "name": "article-publish",
+    "description": "图文/文章准备、上传、保存草稿、重开核对；上层获得用户确认后 submit --user-confirmed 单次提交；人工完成验证码",
+    "access": "write",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录路径，父目录须已存在；不得删除后重试未知提交"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "prepare 上传保存；resume 原页续办；reopen 核对已保存草稿；submit 单次公开提交；status 只读取状态",
+        "choices": [
+          "prepare",
+          "resume",
+          "reopen",
+          "submit",
+          "status"
+        ]
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：视频 2–50 字，文章 2–64 字"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "prepare：视频文件或 UTF-8 纯文本正文；正文不包含标题"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "prepare：纯文本正文，与 file 二选一"
+      },
+      {
+        "name": "draft-id",
+        "type": "str",
+        "required": false,
+        "help": "仅 resume：保存回执未知时，提供已核对的精确草稿 ID；不重新保存或按标题猜测"
+      },
+      {
+        "name": "images",
+        "type": "str",
+        "required": false,
+        "help": "prepare：有序本地图片路径 JSON 数组；追加到正文末尾"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare：横版封面文件"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 视频必填：竖版封面文件，可用同图裁切"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：按实际内容声明",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行准备、重开、恢复或提交；status 不需要"
+      }
+    ],
+    "columns": [
+      "operationId",
+      "contentKind",
+      "status",
+      "submitted",
+      "id",
+      "nid",
+      "accountId",
+      "title",
+      "aiGenerated",
+      "editor",
+      "publicUrl",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/article-publish.js",
+    "sourceFile": "baijiahao/article-publish.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "article-stats",
+    "description": "读取本人图文/文章阅读及互动：精确管理 ID，真实 0 与缺失值分开",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "精确管理 ID；不是 nid，也不按标题模糊查找"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索起日 YYYY-MM-DD，与 end-date 成对；默认作品发表日"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索止日 YYYY-MM-DD，最晚上海今日；不承诺计数的累计或区间口径"
+      }
+    ],
+    "columns": [
+      "id",
+      "nid",
+      "contentKind",
+      "title",
+      "status",
+      "reads",
+      "likes",
+      "comments",
+      "collections",
+      "shares",
+      "observation",
+      "unavailableMetrics"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/article-stats.js",
+    "sourceFile": "baijiahao/article-stats.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "image-text-publish",
+    "description": "图文/文章准备、上传、保存草稿、重开核对；上层获得用户确认后 submit --user-confirmed 单次提交；人工完成验证码",
+    "access": "write",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录路径，父目录须已存在；不得删除后重试未知提交"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "prepare 上传保存；resume 原页续办；reopen 核对已保存草稿；submit 单次公开提交；status 只读取状态",
+        "choices": [
+          "prepare",
+          "resume",
+          "reopen",
+          "submit",
+          "status"
+        ]
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：视频 2–50 字，文章 2–64 字"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "prepare：视频文件或 UTF-8 纯文本正文；正文不包含标题"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "prepare：纯文本正文，与 file 二选一"
+      },
+      {
+        "name": "draft-id",
+        "type": "str",
+        "required": false,
+        "help": "仅 resume：保存回执未知时，提供已核对的精确草稿 ID；不重新保存或按标题猜测"
+      },
+      {
+        "name": "images",
+        "type": "str",
+        "required": false,
+        "help": "prepare：有序本地图片路径 JSON 数组；追加到正文末尾"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare：横版封面文件"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 视频必填：竖版封面文件，可用同图裁切"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：按实际内容声明",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行准备、重开、恢复或提交；status 不需要"
+      }
+    ],
+    "columns": [
+      "operationId",
+      "contentKind",
+      "status",
+      "submitted",
+      "id",
+      "nid",
+      "accountId",
+      "title",
+      "aiGenerated",
+      "editor",
+      "publicUrl",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/image-text-publish.js",
+    "sourceFile": "baijiahao/image-text-publish.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "image-text-stats",
+    "description": "读取本人图文/文章阅读及互动：精确管理 ID，真实 0 与缺失值分开",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "精确管理 ID；不是 nid，也不按标题模糊查找"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索起日 YYYY-MM-DD，与 end-date 成对；默认作品发表日"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索止日 YYYY-MM-DD，最晚上海今日；不承诺计数的累计或区间口径"
+      }
+    ],
+    "columns": [
+      "id",
+      "nid",
+      "contentKind",
+      "title",
+      "status",
+      "reads",
+      "likes",
+      "comments",
+      "collections",
+      "shares",
+      "observation",
+      "unavailableMetrics"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/image-text-stats.js",
+    "sourceFile": "baijiahao/image-text-stats.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "video-download",
+    "description": "下载公开可播放的百家号/好看视频；不限定本人账号，不接受草稿预览，不覆盖已有文件",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "url",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "正式百家号 /s、mbd videolanding 或好看 /v 链接"
+      },
+      {
+        "name": "output",
+        "type": "str",
+        "required": true,
+        "help": "本地输出目录；下载遵循 Node 的现有代理/NO_PROXY 配置"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 60,
+        "required": false,
+        "help": "元数据/下载等待秒数，1–600"
+      }
+    ],
+    "columns": [
+      "id",
+      "title",
+      "sourceUrl",
+      "path",
+      "bytes",
+      "durationSeconds",
+      "width",
+      "height",
+      "sha256"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/video-download.js",
+    "sourceFile": "baijiahao/video-download.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "video-publish",
+    "description": "视频准备、上传、保存草稿、重开核对；上层获得用户确认后 submit --user-confirmed 单次提交；人工完成验证码",
+    "access": "write",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录路径，父目录须已存在；不得删除后重试未知提交"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "prepare 上传保存；resume 原页续办；reopen 核对已保存草稿；submit 单次公开提交；status 只读取状态",
+        "choices": [
+          "prepare",
+          "resume",
+          "reopen",
+          "submit",
+          "status"
+        ]
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：视频 2–50 字，文章 2–64 字"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "prepare：视频文件或 UTF-8 纯文本正文；正文不包含标题"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "prepare：纯文本正文，与 file 二选一"
+      },
+      {
+        "name": "draft-id",
+        "type": "str",
+        "required": false,
+        "help": "仅 resume：保存回执未知时，提供已核对的精确草稿 ID；不重新保存或按标题猜测"
+      },
+      {
+        "name": "images",
+        "type": "str",
+        "required": false,
+        "help": "prepare：有序本地图片路径 JSON 数组；追加到正文末尾"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare：横版封面文件"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 视频必填：竖版封面文件，可用同图裁切"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：按实际内容声明",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "各阶段等待秒数 1–1800；超时保留原页和操作记录"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行准备、重开、恢复或提交；status 不需要"
+      }
+    ],
+    "columns": [
+      "operationId",
+      "contentKind",
+      "status",
+      "submitted",
+      "id",
+      "nid",
+      "accountId",
+      "title",
+      "aiGenerated",
+      "editor",
+      "publicUrl",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/video-publish.js",
+    "sourceFile": "baijiahao/video-publish.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "baijiahao",
+    "name": "video-stats",
+    "description": "读取本人视频播放及互动：精确管理 ID，真实 0 与缺失值分开",
+    "access": "read",
+    "domain": "baijiahao.baidu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "精确管理 ID；不是 nid，也不按标题模糊查找"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索起日 YYYY-MM-DD，与 end-date 成对；默认作品发表日"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "检索止日 YYYY-MM-DD，最晚上海今日；不承诺计数的累计或区间口径"
+      }
+    ],
+    "columns": [
+      "id",
+      "nid",
+      "contentKind",
+      "title",
+      "status",
+      "plays",
+      "likes",
+      "comments",
+      "collections",
+      "shares",
+      "observation",
+      "unavailableMetrics"
+    ],
+    "type": "js",
+    "modulePath": "baijiahao/video-stats.js",
+    "sourceFile": "baijiahao/video-stats.js",
+    "navigateBefore": false
+  },
+  {
     "site": "band",
     "name": "bands",
     "description": "List all Bands you belong to",
@@ -31116,6 +31672,252 @@
     "navigateBefore": false
   },
   {
+    "site": "weixin-channels",
+    "name": "video-publish",
+    "description": "先上传并保存、重开核对平台草稿；上层获得用户确认后才以 submit --user-confirmed 单次提交",
+    "access": "write",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "positional": true,
+        "help": "本地视频文件（prepare / retry-upload 模式必填）"
+      },
+      {
+        "name": "description",
+        "type": "str",
+        "required": false,
+        "help": "完整视频描述（prepare / adopt-draft 必填）"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 可选：分享卡片横封面（4:3），本地 PNG/JPEG；不传保留默认"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 可选：个人主页竖封面（3:4），本地 PNG/JPEG；不传保留默认"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "如实选择是否含 AI 生成内容（prepare / adopt-draft 必填）",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "本地操作记录 JSON 路径，父目录须存在；同一条内容始终复用"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "prepare 上传并保存核对草稿；adopt-draft 核验现有草稿；retry-upload 空页重传；recover 核验重启预览；resume 恢复或重开已保存草稿；submit 用户确认后提交",
+        "choices": [
+          "prepare",
+          "adopt-draft",
+          "retry-upload",
+          "recover",
+          "resume",
+          "submit"
+        ]
+      },
+      {
+        "name": "draft-id",
+        "type": "str",
+        "required": false,
+        "help": "adopt-draft 专用：草稿箱卡片对应的精确 export/... ID"
+      },
+      {
+        "name": "editor-page",
+        "type": "str",
+        "required": false,
+        "help": "adopt-draft / recover / retry-upload：明确检查过的 Chrome 编辑页 ID"
+      },
+      {
+        "name": "editor-session",
+        "type": "str",
+        "required": false,
+        "help": "adopt-draft / recover / retry-upload：已通过 browser <session> bind 明确绑定的浏览器会话"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "上传处理等待秒数（1–1800）"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行当前操作；提交另需 --mode submit"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "status",
+      "submitted",
+      "id",
+      "management_id",
+      "metrics_source",
+      "editor_url",
+      "public_url",
+      "description",
+      "ai_generated",
+      "message",
+      "metrics",
+      "analytics",
+      "editor"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/video-publish.js",
+    "sourceFile": "weixin-channels/video-publish.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "weixin-channels",
+    "name": "video-stats",
+    "description": "按精确数字或管理 ID 采集视频当前累计播放、推荐、喜欢、评论、分享；收藏不可用时明确返回 null",
+    "access": "read",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "数字统计 ID 或已发表管理页 export/... ID；无需发布操作记录"
+      }
+    ],
+    "columns": [
+      "id",
+      "id_type",
+      "title",
+      "published_at",
+      "plays",
+      "recommendations",
+      "likes",
+      "comments",
+      "shares",
+      "collections",
+      "unavailable_metrics",
+      "sampled_at"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/video-stats.js",
+    "sourceFile": "weixin-channels/video-stats.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "weixin-channels",
+    "name": "video-status",
+    "description": "读取本地/原页状态；管理端 ID 查询新作品累计数据，数字 ID 复用截至昨日统计",
+    "access": "read",
+    "domain": "channels.weixin.qq.com",
+    "strategy": "cookie",
+    "browser": "conditional",
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "video-publish 创建的操作记录路径"
+      },
+      {
+        "name": "id",
+        "type": "str",
+        "required": false,
+        "help": "posts 返回的精确 objectId；不会按描述猜测作品"
+      },
+      {
+        "name": "management-id",
+        "type": "str",
+        "required": false,
+        "help": "管理页 export/... ID：查询新作品已发表状态和累计指标，独立于数字统计 ID"
+      },
+      {
+        "name": "inspect-editor",
+        "type": "boolean",
+        "required": false,
+        "help": "只读核对原标签页的文件选择、描述、预览及 AI 标注；不上传或提交"
+      },
+      {
+        "name": "days",
+        "type": "int",
+        "required": false,
+        "valueRequired": true,
+        "help": "发布时间窗口，默认30天，截至上海昨日"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "发布时间起日，须同时提供 end-date"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "发布时间止日，最晚上海昨日"
+      },
+      {
+        "name": "limit",
+        "type": "int",
+        "default": 100,
+        "required": false,
+        "valueRequired": true,
+        "help": "最多查询作品数，1–1000"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "status",
+      "submitted",
+      "id",
+      "management_id",
+      "metrics_source",
+      "editor_url",
+      "public_url",
+      "description",
+      "ai_generated",
+      "message",
+      "metrics",
+      "analytics",
+      "editor"
+    ],
+    "type": "js",
+    "modulePath": "weixin-channels/video-status.js",
+    "sourceFile": "weixin-channels/video-status.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
     "site": "weread",
     "name": "ai-outline",
     "description": "Get AI-generated outline for a book",
@@ -35121,7 +35923,7 @@
   {
     "site": "zhihu",
     "name": "answer",
-    "description": "Answer a Zhihu question",
+    "description": "直接发布已停用；用 answer-submit 先保存核对草稿，用户确认后单独 submit",
     "access": "write",
     "domain": "www.zhihu.com",
     "strategy": "cookie",
@@ -35167,7 +35969,7 @@
     "type": "js",
     "modulePath": "zhihu/answer.js",
     "sourceFile": "zhihu/answer.js",
-    "navigateBefore": "https://www.zhihu.com"
+    "navigateBefore": false
   },
   {
     "site": "zhihu",
@@ -35259,6 +36061,108 @@
     "modulePath": "zhihu/answer-detail.js",
     "sourceFile": "zhihu/answer-detail.js",
     "navigateBefore": "https://www.zhihu.com"
+  },
+  {
+    "site": "zhihu",
+    "name": "answer-submit",
+    "description": "保存并核对新回答草稿，配置 AI 声明，显式提交一次；已有回答不覆盖",
+    "access": "write",
+    "domain": "www.zhihu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "str",
+        "required": false,
+        "positional": true,
+        "help": "prepare 必填：问题 ID、question:<id> 或问题 URL"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "纯文本回答内容，与 file 二选一"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "UTF-8 回答正文文件"
+      },
+      {
+        "name": "expected-title",
+        "type": "str",
+        "required": false,
+        "help": "要求问题标题完全匹配"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": false,
+        "help": "prepare 必填：是否包含 AI 辅助创作",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录，同一回答始终复用"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "prepare",
+        "required": false,
+        "help": "默认仅准备草稿；submit 才公开提交",
+        "choices": [
+          "prepare",
+          "reopen",
+          "submit"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 120,
+        "required": false,
+        "help": "每步等待秒数，回答草稿阶段最多120"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "明确执行当前阶段"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "kind",
+      "status",
+      "submitted",
+      "draft_id",
+      "editor_url",
+      "target",
+      "public_url",
+      "title",
+      "ai_generated",
+      "verified",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/answer-submit.js",
+    "sourceFile": "zhihu/answer-submit.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
   },
   {
     "site": "zhihu",
@@ -35386,6 +36290,169 @@
   },
   {
     "site": "zhihu",
+    "name": "article-draft",
+    "description": "创建知乎文章草稿，上传正文图片并重新打开核对；不发表",
+    "access": "write",
+    "domain": "zhuanlan.zhihu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "title",
+        "type": "str",
+        "required": true,
+        "help": "文章标题，最多100字符"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "纯文本正文，与 file 二选一；保留段落，不承诺 Markdown 富文本转换"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "UTF-8 纯文本正文文件"
+      },
+      {
+        "name": "images",
+        "type": "str",
+        "required": false,
+        "help": "按顺序追加到正文末尾的本地图片路径 JSON 数组"
+      },
+      {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "可选 PNG/JPEG 封面图片"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": true,
+        "help": "是否包含 AI 辅助创作",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "本地持久操作记录；同一作品复用，父目录须存在"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 120,
+        "required": false,
+        "help": "每步等待秒数，1–1800"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "明确执行草稿写入"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "kind",
+      "status",
+      "submitted",
+      "draft_id",
+      "editor_url",
+      "target",
+      "public_url",
+      "title",
+      "ai_generated",
+      "verified",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/article-draft.js",
+    "sourceFile": "zhihu/article-draft.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "zhihu",
+    "name": "article-publish",
+    "description": "重新核对文章草稿，或显式提交同一操作；有持久防重记录",
+    "access": "write",
+    "domain": "zhuanlan.zhihu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "article-draft 生成的操作记录 JSON"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "reopen",
+        "required": false,
+        "help": "reopen 恢复并验证草稿；resume 在原页恢复中断的准备且不重传；repair-cover 显式补传同一草稿封面；submit 才会公开提交",
+        "choices": [
+          "reopen",
+          "resume",
+          "repair-cover",
+          "submit"
+        ]
+      },
+      {
+        "name": "repair-images",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 resume：核对原稿后，按原始文件顺序重建未公开草稿配图"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 120,
+        "required": false,
+        "help": "草稿核对等待秒数"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行当前操作"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "kind",
+      "status",
+      "submitted",
+      "draft_id",
+      "editor_url",
+      "target",
+      "public_url",
+      "title",
+      "ai_generated",
+      "verified",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/article-publish.js",
+    "sourceFile": "zhihu/article-publish.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "zhihu",
     "name": "collection",
     "description": "知乎收藏夹内容列表（需要登录）",
     "access": "read",
@@ -35507,6 +36574,138 @@
     "modulePath": "zhihu/comment.js",
     "sourceFile": "zhihu/comment.js",
     "navigateBefore": "https://zhihu.com"
+  },
+  {
+    "site": "zhihu",
+    "name": "content-stats",
+    "description": "读取本人文章/回答/想法/视频的创作后台聚合与日统计；按真实内容类型路由，浏览与播放分开",
+    "access": "read",
+    "domain": "www.zhihu.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "target",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "作品 URL、后台数据 URL 或 article:/answer:/pin:/zvideo: 精确 ID"
+      },
+      {
+        "name": "type",
+        "type": "str",
+        "required": false,
+        "help": "裸 ID 必须指定类型；不能与 URL/typed target 冲突",
+        "choices": [
+          "article",
+          "answer",
+          "pin",
+          "zvideo"
+        ]
+      },
+      {
+        "name": "days",
+        "type": "int",
+        "required": false,
+        "valueRequired": true,
+        "help": "日趋势天数，默认7，1–366，包含上海今日"
+      },
+      {
+        "name": "start-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "日趋势起日 YYYY-MM-DD，与 end-date 成对"
+      },
+      {
+        "name": "end-date",
+        "type": "str",
+        "required": false,
+        "valueRequired": true,
+        "help": "日趋势止日 YYYY-MM-DD，最晚上海今日"
+      },
+      {
+        "name": "aggregate",
+        "type": "str",
+        "default": "cumulative",
+        "required": false,
+        "help": "累计概览或所选日趋势区间概览",
+        "choices": [
+          "cumulative",
+          "period"
+        ]
+      }
+    ],
+    "columns": [
+      "id",
+      "platform_type",
+      "media_type",
+      "content_url",
+      "stats_url",
+      "start_date",
+      "end_date",
+      "aggregate_scope",
+      "overview",
+      "trend",
+      "content_mark",
+      "sampled_at"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/content-stats.js",
+    "sourceFile": "zhihu/content-stats.js",
+    "navigateBefore": false
+  },
+  {
+    "site": "zhihu",
+    "name": "content-status",
+    "description": "读取本地提交记录，或按真实内容类型核对本人后台及公开内容；不重发",
+    "access": "read",
+    "domain": "www.zhihu.com",
+    "strategy": "cookie",
+    "browser": "conditional",
+    "args": [
+      {
+        "name": "target",
+        "type": "str",
+        "required": false,
+        "help": "精确作品 URL 或 article:/answer:/pin:/zvideo: ID；仅本地查询时不填"
+      },
+      {
+        "name": "type",
+        "type": "str",
+        "required": false,
+        "help": "裸 ID 的真实平台类型",
+        "choices": [
+          "article",
+          "answer",
+          "pin",
+          "zvideo"
+        ]
+      },
+      {
+        "name": "operation",
+        "type": "str",
+        "required": false,
+        "help": "可选操作记录；远端内容须匹配原稿才更新，永不重新提交"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "status",
+      "submitted",
+      "id",
+      "platform_type",
+      "public_url",
+      "creator_visible",
+      "public_visible",
+      "content_mark",
+      "sampled_at",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/content-status.js",
+    "sourceFile": "zhihu/content-status.js",
+    "navigateBefore": false
   },
   {
     "site": "zhihu",
@@ -35824,6 +37023,172 @@
     "modulePath": "zhihu/search.js",
     "sourceFile": "zhihu/search.js",
     "navigateBefore": "https://www.zhihu.com"
+  },
+  {
+    "site": "zhihu",
+    "name": "video-draft",
+    "description": "上传知乎视频并保存、重开草稿；保留真实 pin/zvideo 草稿类型，不发表",
+    "access": "write",
+    "domain": "www.zhihu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "video",
+        "type": "str",
+        "required": true,
+        "positional": true,
+        "help": "本地视频文件；上传前须确认知乎视频协议和使用规范"
+      },
+      {
+        "name": "title",
+        "type": "str",
+        "required": true,
+        "help": "视频标题，最多80字符"
+      },
+      {
+        "name": "text",
+        "type": "str",
+        "required": false,
+        "help": "视频介绍纯文本，与 file 二选一"
+      },
+      {
+        "name": "file",
+        "type": "str",
+        "required": false,
+        "help": "UTF-8 视频介绍文件"
+      },
+      {
+        "name": "ai-generated",
+        "type": "str",
+        "required": true,
+        "help": "如实标注 AI 生成内容",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "original",
+        "type": "str",
+        "required": true,
+        "help": "是否声明原创；不得根据文件来源推测版权",
+        "choices": [
+          "yes",
+          "no"
+        ]
+      },
+      {
+        "name": "category",
+        "type": "str",
+        "required": true,
+        "help": "页面中的准确领域名称，如其他"
+      },
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "持久操作记录 JSON，父目录须存在；同一作品复用"
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "每步等待秒数，1–1800"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行视频上传和草稿保存"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "kind",
+      "status",
+      "submitted",
+      "draft_id",
+      "editor_url",
+      "target",
+      "public_url",
+      "title",
+      "ai_generated",
+      "verified",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/video-draft.js",
+    "sourceFile": "zhihu/video-draft.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
+  },
+  {
+    "site": "zhihu",
+    "name": "video-publish",
+    "description": "恢复并核对知乎视频草稿，或显式提交一次；不把上传 ID 当成已发布作品",
+    "access": "write",
+    "domain": "www.zhihu.com",
+    "strategy": "ui",
+    "browser": true,
+    "args": [
+      {
+        "name": "operation",
+        "type": "str",
+        "required": true,
+        "help": "video-draft 生成的持久操作记录"
+      },
+      {
+        "name": "mode",
+        "type": "str",
+        "default": "reopen",
+        "required": false,
+        "help": "reopen 核对草稿；submit 才公开提交",
+        "choices": [
+          "reopen",
+          "submit"
+        ]
+      },
+      {
+        "name": "timeout",
+        "type": "int",
+        "default": 180,
+        "required": false,
+        "help": "核对等待秒数"
+      },
+      {
+        "name": "user-confirmed",
+        "type": "boolean",
+        "required": false,
+        "help": "仅 submit：上层 Agent 已展示并获得用户对当前已核对草稿的明确发布确认；准备阶段不得预先设置"
+      },
+      {
+        "name": "execute",
+        "type": "boolean",
+        "required": false,
+        "help": "执行当前操作"
+      }
+    ],
+    "columns": [
+      "operation_id",
+      "kind",
+      "status",
+      "submitted",
+      "draft_id",
+      "editor_url",
+      "target",
+      "public_url",
+      "title",
+      "ai_generated",
+      "verified",
+      "message"
+    ],
+    "type": "js",
+    "modulePath": "zhihu/video-publish.js",
+    "sourceFile": "zhihu/video-publish.js",
+    "navigateBefore": false,
+    "siteSession": "persistent"
   },
   {
     "site": "zhihu",

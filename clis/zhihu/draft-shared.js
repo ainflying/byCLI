@@ -85,12 +85,16 @@ export function inspectDraftPage(questionId) {
     if (!editors.length) return { ...base, status: 'page' };
     const editor = editors[0];
     const form = editor.closest('form.AnswerForm');
-    const labels = Array.from(form.querySelectorAll('button')).filter(visible).map(b => clean(b.textContent));
+    // New publisher renders the action bar beside the form inside this portal.
+    // Stay inside that answer's container; never use page-wide submit buttons.
+    const scope = form.closest('#js-answerAddCard, #AnswerFormPortalContainer') || form;
+    if (scope !== form && Array.from(scope.querySelectorAll('form.AnswerForm')).filter(visible).length !== 1) return { ...base, status: 'ambiguous' };
+    const labels = Array.from(scope.querySelectorAll('button')).filter(visible).map(b => clean(b.textContent));
     const mode = labels.includes('提交修改') ? 'edit' : labels.includes('发布回答') ? 'new' : '';
     if (!mode) return { ...base, status: 'page' };
     const blocks = Array.from(editor.querySelectorAll('[data-block="true"]'));
     const text = clean(blocks.length ? blocks.map(b => b.textContent).join('\n') : editor.innerText || editor.textContent);
-    const tip = form.querySelector('.DraftStatusTip');
+    const tip = scope.querySelector('.DraftStatusTip');
     const saved = !!tip && !!tip.querySelector('.ZDI--CloudCheck24') && !/保存中|失败/.test(tip.textContent);
     return { ...base, status: 'editor', mode, text, saved,
         saveText: clean(tip?.textContent),
@@ -109,8 +113,16 @@ export function clickDraftControl(questionId, action) {
         return true;
     };
     const allowed = action === 'save' ? ['保存草稿并离开'] : action === 'open' ? ['编辑回答', '写回答'] : [];
-    const scope = action === 'save' ? 'form.AnswerForm button' : 'button';
-    const button = Array.from(document.querySelectorAll(scope)).find(b => allowed.includes(clean(b.textContent)) && !b.disabled && visible(b));
+    let scope = document;
+    if (action === 'save') {
+        const forms = Array.from(document.querySelectorAll('form.AnswerForm')).filter(visible);
+        if (forms.length !== 1) return false;
+        scope = forms[0].closest('#js-answerAddCard, #AnswerFormPortalContainer') || forms[0];
+    }
+    const matches = Array.from(scope.querySelectorAll('button')).filter(b => allowed.includes(clean(b.textContent)) && !b.disabled && visible(b));
+    // Multiple identical header open controls are harmless; save must be unique.
+    if (action === 'save' && matches.length !== 1) return false;
+    const button = matches[0];
     if (!button) return false;
     button.click();
     return true;

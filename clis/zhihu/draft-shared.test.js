@@ -102,3 +102,20 @@ describe('draft DOM handling', () => {
         d.window.close();
     });
 });
+
+// Synthetic contract for the observed new publisher portal, not a live snapshot.
+describe('new answer action bar outside the form', () => {
+    it('finds only the action bar associated with the unique answer form', () => {
+        const html = `<div id="AnswerFormPortalContainer"><div id="js-answerAddCard"><form class="AnswerForm"><div class="public-DraftEditor-content" contenteditable="true">正文</div></form><div><div class="DraftStatusTip">刚刚 · 草稿<svg class="ZDI--CloudCheck24"></svg></div><button>保存草稿并离开</button><button>发布回答</button></div></div></div><button>提交修改</button>`;
+        const d = dom(html);
+        expect(run(d, inspectDraftPage, id)).toMatchObject({ status: 'editor', mode: 'new', saved: true, text: '正文' });
+        let clicked = 0; d.window.document.querySelector('#js-answerAddCard button').onclick = () => clicked++;
+        expect(run(d, clickDraftControl, id, 'save')).toBe(true); expect(clicked).toBe(1);
+        d.window.close();
+    });
+    it('does not borrow a publish button outside the answer container', () => {
+        const d = dom('<form class="AnswerForm"><div class="public-DraftEditor-content" contenteditable="true"></div></form><button>发布回答</button>');
+        expect(run(d, inspectDraftPage, id).status).toBe('page');
+        d.window.close();
+    });
+});
