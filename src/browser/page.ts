@@ -17,7 +17,7 @@ import type {
   BrowserEvaluateFunction,
   ScreenshotOptions,
 } from '../types.js';
-import { fetchDaemonStatus, sendCommand, sendCommandFull } from './daemon-client.js';
+import { fetchDaemonStatus, sendCommand, sendCommandFull, sendCommandOnce } from './daemon-client.js';
 import { CONSOLE_CAPTURE_CAPABILITY, extensionCapabilityHint, FOCUS_WINDOW_CAPABILITY } from './extension-capabilities.js';
 import { buildEvaluateExpression } from './utils.js';
 import { saveBase64ToFile } from '../utils.js';
@@ -203,6 +203,11 @@ export class Page extends BasePage {
       await new Promise((resolve) => setTimeout(resolve, advice.delayMs));
       return sendCommand('exec', { code, ...this._cmdOpts() });
     }
+  }
+
+  /** Execute an irreversible gesture without page-level or transport retries. */
+  async evaluateOnce<T = unknown>(js: string): Promise<T> {
+    return await sendCommandOnce('exec', { code: buildEvaluateExpression(js, []), ...this._cmdOpts() }) as T;
   }
 
   async getCookies(opts: { domain?: string; url?: string } = {}): Promise<BrowserCookie[]> {

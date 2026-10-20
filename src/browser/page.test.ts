@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { fetchDaemonStatusMock, sendCommandMock, sendCommandFullMock } = vi.hoisted(() => ({
+const { fetchDaemonStatusMock, sendCommandMock, sendCommandFullMock, sendCommandOnceMock } = vi.hoisted(() => ({
   fetchDaemonStatusMock: vi.fn(),
   sendCommandMock: vi.fn(),
   sendCommandFullMock: vi.fn(),
+  sendCommandOnceMock: vi.fn(),
 }));
 const { warnMock } = vi.hoisted(() => ({
   warnMock: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock('./daemon-client.js', () => ({
   fetchDaemonStatus: fetchDaemonStatusMock,
   sendCommand: sendCommandMock,
   sendCommandFull: sendCommandFullMock,
+  sendCommandOnce: sendCommandOnceMock,
 }));
 vi.mock('../logger.js', () => ({
   log: {
@@ -637,5 +639,19 @@ describe('Page.screenshot', () => {
     expect(args.width).toBeUndefined();
     expect(args.height).toBeUndefined();
     expect(args.fullPage).toBeUndefined();
+  });
+});
+
+
+describe('Page.evaluateOnce', () => {
+  it('uses the no-retry transport and never retries a navigation error', async () => {
+    sendCommandOnceMock.mockReset(); sendCommandMock.mockReset();
+    sendCommandOnceMock.mockRejectedValue(new Error('Inspected target navigated or closed'));
+    const page = new Page('site:xiaohongshu', undefined, undefined, undefined, 'adapter', 'persistent');
+    page.setActivePage('confirmed-editor');
+    await expect(page.evaluateOnce('window.finalGesture()')).rejects.toThrow('navigated');
+    expect(sendCommandOnceMock).toHaveBeenCalledTimes(1);
+    expect(sendCommandOnceMock).toHaveBeenCalledWith('exec', expect.objectContaining({page:'confirmed-editor',surface:'adapter',siteSession:'persistent'}));
+    expect(sendCommandMock).not.toHaveBeenCalled();
   });
 });
