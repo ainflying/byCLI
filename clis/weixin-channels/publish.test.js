@@ -111,6 +111,33 @@ describe('video publishing lifecycle', () => {
     await expect(publishVideo(ui.page, { operation: a.operation, mode: 'submit', execute: true, 'user-confirmed': true })).rejects.toThrow('saved and verified platform draft');
     expect(ui.clicks()).toBe(0);
   });
+  it.each(['cover', 'vertical-cover'])('rejects a new %s source on an existing saved operation before touching the browser', async flag => {
+    const ui = browser(), a = await args(); await publishVideo(ui.page, a);
+    const image = join(dir, 'replacement.jpg'); await writeFile(image, Buffer.from([255, 216, 255, 1]));
+    ui.page.goto.mockClear();
+    await expect(publishVideo(ui.page, { ...a, [flag]: image })).rejects.toThrow('different cover');
+    expect(ui.page.goto).not.toHaveBeenCalled(); expect(ui.saves()).toBe(1); expect(ui.uploads()).toBe(1); expect(ui.clicks()).toBe(0);
+  });
+  it.each(['opening', 'upload_unknown', 'confirm_unknown', 'partial'])('retains the current editor on an interrupted %s cover update', async phase => {
+    const ui = browser(), a = await args(); await publishVideo(ui.page, a);
+    const op = JSON.parse(await readFile(a.operation, 'utf8'));
+    op.cover = { sources: { vertical: { path: join(dir, 'portrait.jpg'), sha256: 'a'.repeat(64) } },
+      phase: phase === 'partial' ? 'pending' : phase, completedRoles: phase === 'partial' ? { horizontal: 'already-configured' } : {} };
+    await writeFile(a.operation, JSON.stringify(op)); ui.page.goto.mockClear();
+    await expect(publishVideo(ui.page, { operation: a.operation, mode: 'resume', execute: true })).rejects.toThrow('retained editor');
+    expect(ui.page.goto).not.toHaveBeenCalled(); expect(ui.saves()).toBe(1); expect(ui.clicks()).toBe(0);
+  });
+  it('refuses publication if a recorded custom cover is not saved or its editor identity is unavailable', async () => {
+    const ui = browser(), a = await args(); await publishVideo(ui.page, a);
+    const op = JSON.parse(await readFile(a.operation, 'utf8'));
+    op.cover = { path: join(dir, 'cover.jpg'), sha256: 'a'.repeat(64), phase: 'configured', saved: false };
+    await writeFile(a.operation, JSON.stringify(op));
+    const submit = { operation: a.operation, mode: 'submit', execute: true, 'user-confirmed': true };
+    await expect(publishVideo(ui.page, submit)).rejects.toThrow('has not been saved');
+    op.cover.saved = true; await writeFile(a.operation, JSON.stringify(op));
+    await expect(publishVideo(ui.page, submit)).rejects.toThrow('Cover editor unavailable');
+    expect(ui.clicks()).toBe(0); expect(JSON.parse(await readFile(a.operation, 'utf8')).submitted).toBe(false);
+  });
   it('adopts an exact existing platform draft without uploading or changing content, then submits once', async () => {
     const ui = browser(), a = await args(), draftId = 'export/precise_draft';
     Object.defineProperties(ui.root.querySelector('video'), { readyState: { value: 4 }, duration: { value: 175 } });

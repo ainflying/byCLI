@@ -31694,6 +31694,18 @@
         "help": "完整视频描述（prepare / adopt-draft 必填）"
       },
       {
+        "name": "cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 可选：分享卡片横封面（4:3），本地 PNG/JPEG；不传保留默认"
+      },
+      {
+        "name": "vertical-cover",
+        "type": "str",
+        "required": false,
+        "help": "prepare 可选：个人主页竖封面（3:4），本地 PNG/JPEG；不传保留默认"
+      },
+      {
         "name": "ai-generated",
         "type": "str",
         "required": false,

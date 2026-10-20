@@ -12,6 +12,8 @@ export const videoPublishCommand = cli({
   args: [
     { name: 'file', positional: true, help: '本地视频文件（prepare / retry-upload 模式必填）' },
     { name: 'description', help: '完整视频描述（prepare / adopt-draft 必填）' },
+    { name: 'cover', help: 'prepare 可选：分享卡片横封面（4:3），本地 PNG/JPEG；不传保留默认' },
+    { name: 'vertical-cover', help: 'prepare 可选：个人主页竖封面（3:4），本地 PNG/JPEG；不传保留默认' },
     { name: 'ai-generated', choices: ['yes', 'no'], help: '如实选择是否含 AI 生成内容（prepare / adopt-draft 必填）' },
     { name: 'operation', required: true, help: '本地操作记录 JSON 路径，父目录须存在；同一条内容始终复用' },
     { name: 'mode', default: 'prepare', choices: ['prepare', 'adopt-draft', 'retry-upload', 'recover', 'resume', 'submit'], help: 'prepare 上传并保存核对草稿；adopt-draft 核验现有草稿；retry-upload 空页重传；recover 核验重启预览；resume 恢复或重开已保存草稿；submit 用户确认后提交' },
