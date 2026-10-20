@@ -1,21 +1,21 @@
 /** Read stable engagement metrics for a Weibo post. */
 import { cli, Strategy } from '@sovovs/bycli/registry';
-import { ArgumentError, AuthRequiredError, CommandExecutionError, EmptyResultError } from '@sovovs/bycli/errors';
-import { requireObjectEvaluateResult, unwrapEvaluateResult } from './utils.js';
+import { AuthRequiredError, CommandExecutionError, EmptyResultError } from '@sovovs/bycli/errors';
+import { normalizeWeiboTarget, requireObjectEvaluateResult, unwrapEvaluateResult } from './utils.js';
 
 export const WEIBO_STATS_COLUMNS = [
-    'id', 'url', 'author', 'created_at', 'content_type',
-    'reposts', 'comments', 'likes', 'collects', 'views',
+    'id', 'mblogid', 'url', 'author', 'author_uid', 'created_at', 'content_type',
+    'reposts', 'comments', 'likes', 'collects', 'views', 'video_plays', 'visibility', 'observed_at',
 ];
 
 export async function runWeiboStats(page, kwargs, contentType = 'short') {
-    const id = String(kwargs?.id ?? '').trim();
-    if (!id) throw new ArgumentError('Weibo post ID or mblogid is required');
+    const target = normalizeWeiboTarget(kwargs?.id);
+    const lookup = target.id || target.mblogid;
     await page.goto('https://weibo.com');
     await page.wait(2);
     const data = requireObjectEvaluateResult(unwrapEvaluateResult(await page.evaluate(`
       (async () => {
-        const id = ${JSON.stringify(id)};
+        const id = ${JSON.stringify(lookup)};
         const resp = await fetch('/ajax/statuses/show?id=' + encodeURIComponent(id), {credentials: 'include'});
         if (resp.status === 403 || resp.status === 401) return { auth: true };
         if (!resp.ok) return { error: 'HTTP ' + resp.status };
@@ -24,8 +24,10 @@ export async function runWeiboStats(page, kwargs, contentType = 'short') {
         const u = s.user || {};
         return {
           id: String(s.idstr || s.id || id),
+          mblogid: s.mblogid || (${JSON.stringify(target.mblogid)}),
           url: 'https://weibo.com/' + String(u.id || '') + '/' + String(s.mblogid || ''),
           author: String(u.screen_name || ''),
+          author_uid: String(u.idstr || u.id || ''),
           created_at: String(s.created_at || ''),
           content_type: ${JSON.stringify(contentType)},
           reposts: Number(s.reposts_count ?? 0),
@@ -33,11 +35,14 @@ export async function runWeiboStats(page, kwargs, contentType = 'short') {
           likes: Number(s.attitudes_count ?? 0),
           collects: Number(s.collect_count ?? s.favorites_count ?? 0),
           views: s.read_count == null ? null : Number(s.read_count),
+          video_plays: s.play_count == null ? (s.video_play_count == null ? null : Number(s.video_play_count)) : Number(s.play_count),
+          visibility: s.visible?.type === 0 ? 'public' : (s.visible?.type == null ? null : String(s.visible.type)),
+          observed_at: new Date().toISOString(),
         };
       })()
     `)), 'weibo stats');
     if (data.auth) throw new AuthRequiredError('weibo.com');
-    if (data.missing) throw new EmptyResultError('weibo stats', `Post ${id} was not found`);
+    if (data.missing) throw new EmptyResultError('weibo stats', `Post ${lookup} was not found`);
     if (data.error) throw new CommandExecutionError(String(data.error));
     return [data];
 }

@@ -29,6 +29,7 @@ const COMPOSE_TIMEOUT_MS = 10_000;
 const SUBMIT_POLL_MS = 500;
 const SUBMIT_TIMEOUT_MS = 20_000;
 const SUPPORTED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp']);
+const SUPPORTED_VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm']);
 
 // Weibo PC UI selectors. The CSS-module hash drifts on every frontend
 // rebuild (#1602), so match on the stable placeholder text and keep the
@@ -40,6 +41,7 @@ const TEXTAREA_SELECTORS = [
     'textarea._input_13iqr_8',
 ];
 const FILE_INPUT_SELECTOR = 'input[type="file"][class*="_file_"]';
+const VIDEO_FILE_INPUT_SELECTOR = 'input[type="file"][accept*="video"]';
 
 function validateText(text) {
     const t = String(text ?? '').trim();
@@ -68,6 +70,18 @@ function validateImagePaths(raw) {
     });
 }
 
+function validateVideoPath(raw) {
+    if (!raw) return null;
+    const absPath = path.resolve(String(raw).trim());
+    const ext = path.extname(absPath).toLowerCase();
+    if (!SUPPORTED_VIDEO_EXTENSIONS.has(ext)) {
+        throw new ArgumentError(`Unsupported video format "${ext}". Supported: mp4, mov, m4v, webm`);
+    }
+    const stat = fs.statSync(absPath, { throwIfNoEntry: false });
+    if (!stat || !stat.isFile()) throw new ArgumentError(`Not a valid video file: ${absPath}`);
+    return absPath;
+}
+
 cli({
     site: 'weibo',
     name: 'publish',
@@ -90,6 +104,12 @@ cli({
             required: false,
             help: `Image paths, comma-separated, max ${MAX_IMAGES} (jpg/png/gif/webp)`,
         },
+        {
+            name: 'video',
+            type: 'string',
+            required: false,
+            help: 'Video path (mp4/mov/m4v/webm), mutually exclusive with --images',
+        },
     ],
     columns: ['status', 'message', 'text'],
     func: async (page, kwargs) => {
@@ -97,6 +117,10 @@ cli({
 
         const text = validateText(kwargs.text);
         const absPaths = validateImagePaths(kwargs.images);
+        const absVideo = validateVideoPath(kwargs.video);
+        if (absPaths.length > 0 && absVideo) {
+            throw new ArgumentError('weibo publish --images and --video are mutually exclusive');
+        }
 
         // Step 1: Navigate to weibo.com and wait for feed to load
         await page.goto('https://weibo.com', { waitUntil: 'load', settleMs: 2000 });
@@ -156,8 +180,39 @@ cli({
             throw new CommandExecutionError('Weibo compose editor did not appear');
         }
 
-        // Step 5: Upload images first (before text to avoid editor reset)
-        if (absPaths.length > 0) {
+        // Step 5: Upload media before text to avoid editor reset.
+        if (absVideo) {
+            const videoTabResult = await page.evaluate(`
+                () => {
+                    const visible = el => !!el && el.offsetParent !== null && !el.disabled;
+                    for (const el of document.querySelectorAll('button, [role="button"], span')) {
+                        const text = (el.innerText || el.textContent || '').trim();
+                        if (text === '视频' && visible(el)) { el.click(); return { ok: true }; }
+                    }
+                    return { ok: false, message: 'Could not find video upload tab' };
+                }
+            `);
+            if (!videoTabResult?.ok) throw new CommandExecutionError(videoTabResult?.message || 'Could not open video upload mode');
+            const videoInputFound = await page.evaluate(`
+                () => !!document.querySelector(${JSON.stringify(VIDEO_FILE_INPUT_SELECTOR)})
+            `);
+            if (!videoInputFound) throw new CommandExecutionError('Could not find video file input on Weibo compose page. UI may have changed.');
+            await page.setFileInput([absVideo], VIDEO_FILE_INPUT_SELECTOR);
+            let videoReady = null;
+            for (let i = 0; i < Math.ceil(UPLOAD_TIMEOUT_MS / UPLOAD_POLL_MS); i++) {
+                await page.wait({ time: UPLOAD_POLL_MS / 1000 });
+                videoReady = await page.evaluate(`
+                    () => {
+                        const progress = document.querySelector('[class*="progress"], [class*="uploading"]');
+                        const video = document.querySelector('video');
+                        if (progress && progress.offsetParent !== null) return null;
+                        return video ? { ok: true } : null;
+                    }
+                `);
+                if (videoReady?.ok) break;
+            }
+            if (!videoReady?.ok) throw new CommandExecutionError('Video upload did not complete before timeout');
+        } else if (absPaths.length > 0) {
             if (!page.setFileInput) {
                 throw new CommandExecutionError('Browser extension does not support file upload. Please update the extension.');
             }
@@ -303,4 +358,5 @@ cli({
 export const __test__ = {
     validateText,
     validateImagePaths,
+    validateVideoPath,
 };

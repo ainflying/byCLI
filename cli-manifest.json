@@ -29618,15 +29618,20 @@
     ],
     "columns": [
       "id",
+      "mblogid",
       "url",
       "author",
+      "author_uid",
       "created_at",
       "content_type",
       "reposts",
       "comments",
       "likes",
       "collects",
-      "views"
+      "views",
+      "video_plays",
+      "visibility",
+      "observed_at"
     ],
     "type": "js",
     "modulePath": "weibo/stats.js",
@@ -29647,23 +29652,52 @@
         "type": "str",
         "required": true,
         "positional": true,
-        "help": "Post ID (numeric idstr)"
+        "help": "Post ID, mblogid, or Weibo post URL"
       },
       {
         "name": "limit",
         "type": "int",
         "default": 20,
         "required": false,
-        "help": "Number of comments (max 50)"
+        "help": "Number of comments (max 100)"
+      },
+      {
+        "name": "cursor",
+        "type": "string",
+        "required": false,
+        "help": "Resume cursor returned by Weibo"
+      },
+      {
+        "name": "sort",
+        "type": "string",
+        "default": "time",
+        "required": false,
+        "help": "Comment order",
+        "choices": [
+          "hot",
+          "time"
+        ]
+      },
+      {
+        "name": "include-replies",
+        "type": "boolean",
+        "default": false,
+        "required": false,
+        "help": "Include structured reply comments"
       }
     ],
     "columns": [
       "rank",
+      "comment_id",
       "author",
+      "author_uid",
       "text",
       "likes",
+      "reply_count",
       "replies",
-      "time"
+      "time",
+      "next_cursor",
+      "has_more"
     ],
     "type": "js",
     "modulePath": "weibo/comments.js",
@@ -29821,15 +29855,20 @@
     ],
     "columns": [
       "id",
+      "mblogid",
       "url",
       "author",
+      "author_uid",
       "created_at",
       "content_type",
       "reposts",
       "comments",
       "likes",
       "collects",
-      "views"
+      "views",
+      "video_plays",
+      "visibility",
+      "observed_at"
     ],
     "type": "js",
     "modulePath": "weibo/stats.js",
@@ -29873,7 +29912,7 @@
         "type": "str",
         "required": true,
         "positional": true,
-        "help": "Post ID (numeric idstr or mblogid from URL)"
+        "help": "Post ID, mblogid, or Weibo post URL"
       }
     ],
     "columns": [
@@ -29906,6 +29945,12 @@
         "type": "string",
         "required": false,
         "help": "Image paths, comma-separated, max 9 (jpg/png/gif/webp)"
+      },
+      {
+        "name": "video",
+        "type": "string",
+        "required": false,
+        "help": "Video path (mp4/mov/m4v/webm), mutually exclusive with --images"
       }
     ],
     "columns": [
@@ -29974,15 +30019,20 @@
     ],
     "columns": [
       "id",
+      "mblogid",
       "url",
       "author",
+      "author_uid",
       "created_at",
       "content_type",
       "reposts",
       "comments",
       "likes",
       "collects",
-      "views"
+      "views",
+      "video_plays",
+      "visibility",
+      "observed_at"
     ],
     "type": "js",
     "modulePath": "weibo/stats.js",
@@ -30086,6 +30136,44 @@
   },
   {
     "site": "weibo",
+    "name": "video-download",
+    "description": "Download a video from a Weibo post",
+    "access": "read",
+    "domain": "weibo.com",
+    "strategy": "cookie",
+    "browser": true,
+    "args": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "positional": true,
+        "help": "Weibo post ID, mblogid, or URL"
+      },
+      {
+        "name": "output",
+        "type": "string",
+        "default": "./weibo-downloads",
+        "required": false,
+        "help": "Output directory"
+      }
+    ],
+    "columns": [
+      "id",
+      "mblogid",
+      "url",
+      "title",
+      "path",
+      "bytes",
+      "contentType"
+    ],
+    "type": "js",
+    "modulePath": "weibo/video-download.js",
+    "sourceFile": "weibo/video-download.js",
+    "navigateBefore": "https://weibo.com"
+  },
+  {
+    "site": "weibo",
     "name": "video-stats",
     "description": "获取视频微博互动数据",
     "access": "read",
@@ -30103,15 +30191,20 @@
     ],
     "columns": [
       "id",
+      "mblogid",
       "url",
       "author",
+      "author_uid",
       "created_at",
       "content_type",
       "reposts",
       "comments",
       "likes",
       "collects",
-      "views"
+      "views",
+      "video_plays",
+      "visibility",
+      "observed_at"
     ],
     "type": "js",
     "modulePath": "weibo/stats.js",
