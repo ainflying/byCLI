@@ -53,7 +53,8 @@
     "LICENSE",
     "NOTICE",
     "!**/*.test.js",
-    "!**/*.e2e.test.js"
+    "!**/*.e2e.test.js",
+    "!scripts/verify-native-*.mjs"
   ],
   "scripts": {
     "dev": "tsx src/main.ts",

@@ -45,6 +45,30 @@ try {
   const core = pack(join(root, 'packages/recorder-core'));
   const main = pack(mainStage);
 
+  for (const file of [
+    'dist/src/download/media-validation.js',
+    'clis/_shared/video-submit.js',
+    'clis/_shared/read-response-capture.js',
+    'clis/xiaohongshu/_image-prepare.js',
+    'clis/xiaohongshu/_stats.js',
+    'clis/xiaohongshu/publish-video.js',
+    'clis/xiaohongshu/publish-images.js',
+    'clis/sohu/download.js',
+    'clis/sohu/publish-video.js',
+    'clis/sohu/publish-gallery.js',
+    'clis/sohu/publish-article.js',
+    'clis/juejin/_article-stats.js',
+    'clis/juejin/publish-article.js',
+    'clis/csdn/_article-receipt.js',
+    'clis/csdn/publish-article.js',
+  ]) {
+    assert(main.files.has(file), `bycli tarball is missing native connector file ${file}`);
+  }
+  assert(![...main.files].some((file) => /^scripts\/verify-native-.*\.mjs$/.test(file)),
+    'bycli tarball includes account-bound native connector probes');
+  assert(![...main.files].some((file) => file.startsWith('artifacts/')),
+    'bycli tarball includes local acceptance evidence');
+
   for (const file of ['dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE']) {
     assert(core.files.has(file), `recorder-core tarball is missing ${file}`);
   }
